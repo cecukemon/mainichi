@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Reading exercise - home entry</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --surface-1: #edece7;
+    --surface-2: #ffffff;
+    --border-strong: rgba(0,0,0,0.18);
+    --text-primary: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --text-muted: #8b8a86;
+    --text-accent: #185FA5;
+    --fill-accent: #378ADD;
+    --bg-accent: #E6F1FB;
+    --fill-primary: #1a1a18;
+    --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--surface-1); font-family: var(--ui); padding: 32px 16px; margin: 0; color: var(--text-primary); }
+  i.ti { line-height: 1; }
+</style>
+</head>
+<body>
+<!-- Reading exercise: home-screen entry point ("Reading practice"), replacing the temporary "Furigana preview (spike)" button. See reading-exercise.md. Source: Claude Design handoff "Reading Exercise Mockups" (shared states). -->
+<div style="background:#dededa;border-radius:40px;padding:10px;box-shadow:0 6px 22px rgba(0,0,0,.11);max-width:320px;margin:0 auto;">
+  <div style="width:300px;height:640px;background:var(--surface-2);border-radius:31px;overflow:hidden;display:flex;flex-direction:column;position:relative;">
+    <div style="height:36px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 20px 0 22px;font:600 13px var(--ui);"><span>9:41</span><span style="display:flex;align-items:center;gap:6px;font-size:15px;"><i class="ti ti-antenna-bars-4"></i><i class="ti ti-wifi"></i><i class="ti ti-battery-3"></i></span></div>
+    <div style="height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex:0 0 auto;"><span style="font:600 19px var(--ui);letter-spacing:-.01em;">mainichi</span><button style="width:34px;height:34px;border:none;background:transparent;border-radius:8px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:19px;"><i class="ti ti-settings"></i></button></div>
+    <div style="flex:1;padding:8px 18px 18px;display:flex;flex-direction:column;">
+      <div style="font:500 13px var(--ui);color:var(--text-muted);margin:6px 2px 12px;">Practice</div>
+      <div style="background:var(--bg-accent);border:0.5px solid rgba(55,138,221,.28);border-radius:16px;padding:16px;display:flex;align-items:center;gap:13px;cursor:pointer;">
+        <div style="width:46px;height:46px;border-radius:13px;background:var(--fill-accent);color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto;"><i class="ti ti-book-2" style="font-size:23px;"></i></div>
+        <div style="flex:1;"><div style="font:600 16px var(--ui);color:var(--text-primary);">Reading practice</div><div style="font:400 12.5px var(--ui);color:var(--text-accent);margin-top:2px;">Read a fresh conversation</div></div>
+        <i class="ti ti-chevron-right" style="color:var(--text-accent);font-size:20px;"></i>
+      </div>
+      <div style="font:500 13px var(--ui);color:var(--text-muted);margin:24px 2px 12px;">Capture</div>
+      <button style="width:100%;height:48px;border:none;border-radius:12px;background:var(--fill-primary);color:#fff;font:600 14px var(--ui);display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;margin-bottom:10px;"><i class="ti ti-camera" style="font-size:18px;"></i>New import</button>
+      <button style="width:100%;height:48px;border:0.5px solid var(--border-strong);border-radius:12px;background:var(--surface-2);color:var(--text-primary);font:600 14px var(--ui);display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;"><i class="ti ti-photo" style="font-size:18px;"></i>New import from photo</button>
+      <div style="flex:1;"></div>
+      <div style="text-align:center;font:400 11px var(--ui);color:var(--text-muted);opacity:.85;">Replaces the "Furigana preview (spike)"</div>
+    </div>
+  </div>
+</div>
+</body></html>
