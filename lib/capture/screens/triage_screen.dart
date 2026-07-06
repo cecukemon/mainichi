@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../capture_providers.dart';
+import '../widgets/worksheet_crop_placeholder.dart';
 import 'commit_screen.dart';
 import 'review_queue_screen.dart';
 
@@ -26,11 +27,16 @@ class TriageScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Worksheet extracted', style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 4),
+                  const WorksheetCropPlaceholder(label: 'worksheet photo', height: 118),
+                  const SizedBox(height: 14),
+                  Text(draft.worksheetTitle, style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 2),
+                  Text(draft.worksheetTopic, style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 2),
                   Text(
-                    '${draft.vocabulary.length} vocab, ${draft.templates.length} templates',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    '${draft.vocabulary.length} vocab · ${draft.templates.length} templates · '
+                    '${draft.vocabulary.where((v) => v.isPictureDerived).length} picture words',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 20),
                   Row(
@@ -72,11 +78,45 @@ class TriageScreen extends ConsumerWidget {
                     count: draft.dedupCandidateCount,
                   ),
                   const SizedBox(height: 24),
-                  OutlinedButton.icon(
-                    onPressed: () => ref.read(captureQueueProvider.notifier).approveAllHighConfidence(),
-                    icon: const Icon(Icons.check),
-                    label: Text('Approve all high-confidence (${draft.highConfidenceCount})'),
-                  ),
+                  if (state.bulkApproveStaged)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${draft.highConfidenceCount} high-confidence staged',
+                                  style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.green),
+                                ),
+                                Text(
+                                  'not saved yet — commits with the rest',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.green),
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => ref.read(captureQueueProvider.notifier).undoBulkApprove(),
+                            child: const Text('Undo'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: () => ref.read(captureQueueProvider.notifier).approveAllHighConfidence(),
+                      icon: const Icon(Icons.check),
+                      label: Text('Approve all high-confidence (${draft.highConfidenceCount})'),
+                    ),
                   const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: () {

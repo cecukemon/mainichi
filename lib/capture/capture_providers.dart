@@ -29,16 +29,28 @@ class CaptureQueueState {
     this.order = const [],
     this.resolvedRefs = const {},
     this.skippedRefs = const {},
+    this.discardedRefs = const {},
     this.pointer = 0,
     this.commitResult,
+    this.bulkApproveStaged = false,
   });
 
   final CaptureDraft? draft;
   final List<QueueRef> order;
   final Set<QueueRef> resolvedRefs;
   final Set<QueueRef> skippedRefs;
+
+  /// Vocab items marked as genuine junk via "Discard extraction" — a
+  /// stronger, non-revisitable action than skip (capture-loop.md §3).
+  /// Excluded entirely at commit: no write, no "skipped" summary entry.
+  final Set<QueueRef> discardedRefs;
   final int pointer;
   final CommitResult? commitResult;
+
+  /// True after "Approve all high-confidence" is tapped and until it's
+  /// undone. Purely cosmetic — commit already treats high-confidence items
+  /// as commit-eligible regardless of [ReviewStatus].
+  final bool bulkApproveStaged;
 
   bool get isLoading => draft == null;
   QueueRef? get currentRef => pointer < order.length ? order[pointer] : null;
@@ -51,16 +63,20 @@ class CaptureQueueState {
     List<QueueRef>? order,
     Set<QueueRef>? resolvedRefs,
     Set<QueueRef>? skippedRefs,
+    Set<QueueRef>? discardedRefs,
     int? pointer,
     CommitResult? commitResult,
+    bool? bulkApproveStaged,
   }) {
     return CaptureQueueState(
       draft: draft ?? this.draft,
       order: order ?? this.order,
       resolvedRefs: resolvedRefs ?? this.resolvedRefs,
       skippedRefs: skippedRefs ?? this.skippedRefs,
+      discardedRefs: discardedRefs ?? this.discardedRefs,
       pointer: pointer ?? this.pointer,
       commitResult: commitResult ?? this.commitResult,
+      bulkApproveStaged: bulkApproveStaged ?? this.bulkApproveStaged,
     );
   }
 }
@@ -95,13 +111,51 @@ class CaptureQueueNotifier extends StateNotifier<CaptureQueueState> {
             if (!t.needsReview) t.copyWith(reviewStatus: ReviewStatus.approved) else t,
         ],
       ),
+      bulkApproveStaged: true,
+    );
+  }
+
+  /// Reverts the staged bulk-approve — cosmetic only (see
+  /// [CaptureQueueState.bulkApproveStaged]), so undoing it just reverts
+  /// [ReviewStatus] back to pending.
+  void undoBulkApprove() {
+    final draft = state.draft;
+    if (draft == null) return;
+    state = state.copyWith(
+      draft: draft.copyWith(
+        vocabulary: [
+          for (final v in draft.vocabulary)
+            if (!v.needsReview) v.copyWith(reviewStatus: ReviewStatus.pending) else v,
+        ],
+        templates: [
+          for (final t in draft.templates)
+            if (!t.needsReview) t.copyWith(reviewStatus: ReviewStatus.pending) else t,
+        ],
+      ),
+      bulkApproveStaged: false,
     );
   }
 
   void approveCurrentVocab(VocabDraftItem edited) {
     final ref = state.currentRef;
-    if (ref == null || ref.type != QueueItemType.vocab) return;
+    if (ref == null ||
+        (ref.type != QueueItemType.vocab && ref.type != QueueItemType.pictureWord)) {
+      return;
+    }
     _replaceVocab(ref.index, edited.copyWith(reviewStatus: ReviewStatus.approved));
+    _resolve(ref);
+  }
+
+  /// Marks the current vocab/picture-word item as genuine junk — a stronger,
+  /// non-revisitable action than skip (capture-loop.md §3). Excluded entirely
+  /// at commit.
+  void discardCurrentVocab() {
+    final ref = state.currentRef;
+    if (ref == null ||
+        (ref.type != QueueItemType.vocab && ref.type != QueueItemType.pictureWord)) {
+      return;
+    }
+    state = state.copyWith(discardedRefs: {...state.discardedRefs, ref});
     _resolve(ref);
   }
 
@@ -145,7 +199,12 @@ class CaptureQueueNotifier extends StateNotifier<CaptureQueueState> {
   Future<void> commit() async {
     final draft = state.draft;
     if (draft == null) return;
-    final result = await runCommit(_db, draft, skippedRefs: state.skippedRefs);
+    final result = await runCommit(
+      _db,
+      draft,
+      skippedRefs: state.skippedRefs,
+      discardedRefs: state.discardedRefs,
+    );
     state = state.copyWith(commitResult: result);
   }
 

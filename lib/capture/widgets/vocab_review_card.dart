@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/enums.dart';
 import '../models.dart';
+import 'worksheet_crop_placeholder.dart';
 
 class VocabReviewCard extends StatefulWidget {
   const VocabReviewCard({
@@ -16,11 +17,13 @@ class VocabReviewCard extends StatefulWidget {
     required this.item,
     required this.onApprove,
     required this.onSkip,
+    required this.onDiscard,
   });
 
   final VocabDraftItem item;
   final void Function(VocabDraftItem edited) onApprove;
   final VoidCallback onSkip;
+  final VoidCallback onDiscard;
 
   @override
   State<VocabReviewCard> createState() => _VocabReviewCardState();
@@ -31,7 +34,9 @@ const _noKanji = '';
 class _VocabReviewCardState extends State<VocabReviewCard> {
   late String _kanji;
   late final TextEditingController _kanjiFreeText;
-  late final TextEditingController _kana;
+  late String _kana;
+  bool _typingKana = false;
+  late final TextEditingController _kanaFreeText;
   late final TextEditingController _meaning;
   late WordRole _role;
 
@@ -40,7 +45,8 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
     super.initState();
     _kanji = widget.item.kanji;
     _kanjiFreeText = TextEditingController(text: widget.item.kanji);
-    _kana = TextEditingController(text: widget.item.kana);
+    _kana = widget.item.kana;
+    _kanaFreeText = TextEditingController(text: widget.item.kana);
     _meaning = TextEditingController(text: widget.item.meaning);
     _role = widget.item.role;
   }
@@ -48,7 +54,7 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
   @override
   void dispose() {
     _kanjiFreeText.dispose();
-    _kana.dispose();
+    _kanaFreeText.dispose();
     _meaning.dispose();
     super.dispose();
   }
@@ -61,36 +67,34 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
       ...item.meaningCandidates,
       if (item.handwrittenGloss != null) item.handwrittenGloss!,
     }.toList();
+    final kanaOptions = item.kanaCandidates.isEmpty ? [item.kana] : item.kanaCandidates;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Chip(
-            label: Text(item.isPictureDerived
-                ? 'Picture-derived — meaning inferred'
-                : 'Vocabulary — low confidence'),
-            backgroundColor: Colors.orange.withValues(alpha: 0.15),
+          const Chip(
+            label: Text('Vocabulary — low confidence'),
+            backgroundColor: Color(0x26FF9800),
           ),
-          if (item.isPictureDerived) ...[
-            const SizedBox(height: 12),
-            Container(
-              height: 100,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                border: Border.all(color: Theme.of(context).dividerColor),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.edit_outlined, size: 30, color: Colors.grey),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Drawing from the worksheet — no text gloss',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
+          if (item.notes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Expanded(child: Text(item.notes, style: Theme.of(context).textTheme.bodySmall)),
+              ],
             ),
           ],
+          const SizedBox(height: 12),
+          Text('Compare with the worksheet', style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 6),
+          WorksheetCropPlaceholder(
+            label: '${item.kanji.isNotEmpty ? item.kanji : item.kana} · source crop',
+          ),
           const SizedBox(height: 16),
           Text('Kanji', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 6),
@@ -140,9 +144,37 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
               onChanged: (v) => _kanji = v,
             ),
           const SizedBox(height: 16),
-          Text('Kana reading', style: Theme.of(context).textTheme.labelMedium),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Kana reading', style: Theme.of(context).textTheme.labelMedium),
+              Text('tap to pick — no typing', style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
           const SizedBox(height: 6),
-          TextField(controller: _kana, decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true)),
+          if (_typingKana)
+            TextField(
+              controller: _kanaFreeText,
+              decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+              onChanged: (v) => _kana = v,
+            )
+          else
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final candidate in kanaOptions)
+                  ChoiceChip(
+                    label: Text(candidate),
+                    selected: _kana == candidate,
+                    onSelected: (_) => setState(() => _kana = candidate),
+                  ),
+                ActionChip(
+                  avatar: const Icon(Icons.keyboard, size: 14),
+                  label: const Text('Type (rōmaji)'),
+                  onPressed: () => setState(() => _typingKana = true),
+                ),
+              ],
+            ),
           const SizedBox(height: 16),
           Text('Meaning', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 6),
@@ -182,13 +214,20 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
                 flex: 2,
                 child: FilledButton.icon(
                   onPressed: () => widget.onApprove(
-                    item.copyWith(kanji: _kanji, kana: _kana.text, meaning: _meaning.text, role: _role),
+                    item.copyWith(kanji: _kanji, kana: _kana, meaning: _meaning.text, role: _role),
                   ),
                   icon: const Icon(Icons.check),
                   label: const Text('Approve'),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 4),
+          TextButton.icon(
+            onPressed: widget.onDiscard,
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('Discard extraction'),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ],
       ),

@@ -21,6 +21,7 @@ CaptureDraft buildSampleDraft() {
         kanaOnly: false,
         meaningSource: MeaningSource.printedGloss,
         confidence: ConfidenceTier.high,
+        kanaCandidates: ['すし'],
       ),
       // Dedup candidate: matches the demo Bunko entry seeded by
       // seedDemoBunko(), re-extracted here with a new example sentence.
@@ -34,6 +35,7 @@ CaptureDraft buildSampleDraft() {
         meaningSource: MeaningSource.printedGloss,
         confidence: ConfidenceTier.high,
         kanjiCandidates: ['食べる'],
+        kanaCandidates: ['たべる'],
         newExampleSentence: 'わたしは すしを たべます。',
       ),
       // Low-confidence vocab: kanji guess needs candidate-picking, not typing.
@@ -48,19 +50,22 @@ CaptureDraft buildSampleDraft() {
         confidence: ConfidenceTier.low,
         notes: 'reading uncertain, sheet is smudged',
         kanjiCandidates: ['走る', '趣る'],
+        kanaCandidates: ['はしる'],
       ),
       // Picture-derived: meaning is a guess from a drawing, plus a margin gloss.
+      // No kanji was printed alongside the drawing, so no kanji candidates —
+      // the review card defaults to "No kanji" (capture-loop.md §3).
       const VocabDraftItem(
         kana: 'はしる',
-        kanji: '走る',
+        kanji: '',
         romaji: 'hashiru',
         meaning: 'to jog',
         role: WordRole.verb,
-        kanaOnly: false,
+        kanaOnly: true,
         meaningSource: MeaningSource.picture,
         confidence: ConfidenceTier.low,
         notes: 'shown with a picture of someone running',
-        kanjiCandidates: ['走る', '趣る'],
+        kanaCandidates: ['はしる'],
         meaningCandidates: ['to jog', 'to run', 'to rush'],
         handwrittenGloss: 'rennen',
       ),

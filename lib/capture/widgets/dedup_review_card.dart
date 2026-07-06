@@ -81,11 +81,13 @@ class DedupReviewCard extends StatelessWidget {
                     '${match.exampleSentences.length} existing example sentence${match.exampleSentences.length == 1 ? '' : 's'}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  Text(match.exampleSentences.first),
+                  for (final sentence in match.exampleSentences) Text(sentence),
                 ],
               ],
             ),
           ),
+          const SizedBox(height: 14),
+          _MatchSummary(item: item, match: match),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -101,6 +103,80 @@ class DedupReviewCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Field-by-field comparison between the new and existing entries — the
+/// false-match guard the spec calls for (capture-loop.md §3): kana alone
+/// isn't proof of a match, so this makes the actual per-field agreement
+/// visible rather than implying the merge is automatically safe.
+class _MatchSummary extends StatelessWidget {
+  const _MatchSummary({required this.item, required this.match});
+
+  final VocabDraftItem item;
+  final ExistingWordMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    final readingMatches = item.kana == match.kana;
+    final meaningMatches = item.meaning.trim().toLowerCase() == (match.meaning ?? '').trim().toLowerCase();
+    final roleMatches = item.role == match.role;
+    final allMatch = readingMatches && meaningMatches && roleMatches;
+
+    final color = allMatch ? Colors.green : Colors.orange;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(allMatch ? Icons.check_circle : Icons.info_outline, size: 15, color: color),
+              const SizedBox(width: 6),
+              Text(
+                allMatch ? 'Reading, meaning & role all match' : 'Some fields differ — check before merging',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: color),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _FieldRow(label: 'Reading', left: item.kana, right: match.kana, matches: readingMatches, color: color),
+          _FieldRow(label: 'Meaning', left: item.meaning, right: match.meaning ?? '', matches: meaningMatches, color: color),
+          _FieldRow(label: 'Role', left: item.role.name, right: match.role.name, matches: roleMatches, color: color),
+        ],
+      ),
+    );
+  }
+}
+
+class _FieldRow extends StatelessWidget {
+  const _FieldRow({required this.label, required this.left, required this.right, required this.matches, required this.color});
+
+  final String label;
+  final String left;
+  final String right;
+  final bool matches;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, color: color.withValues(alpha: 0.75))),
+          Text(
+            matches ? '$left = $right' : '$left ≠ $right',
+            style: TextStyle(fontSize: 12, color: color),
           ),
         ],
       ),

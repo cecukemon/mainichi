@@ -17,7 +17,7 @@ class CommitScreen extends ConsumerWidget {
     final state = ref.watch(captureQueueProvider);
     final notifier = ref.read(captureQueueProvider.notifier);
     final draft = state.draft!;
-    final preview = previewCommit(draft, state.skippedRefs);
+    final preview = previewCommit(draft, state.skippedRefs, discardedRefs: state.discardedRefs);
     final totalToCommit = preview.newWordCount + preview.mergedCount + preview.newTemplateCount;
 
     return Scaffold(

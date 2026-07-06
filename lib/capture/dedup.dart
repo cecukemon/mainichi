@@ -31,6 +31,7 @@ Future<ExistingWordMatch?> findDedupCandidate(
     kana: match.kana,
     kanji: match.kanji,
     meaning: match.meaning,
+    role: match.role,
     exampleSentences: examples.map((e) => e.sentence).toList(),
   );
 }
@@ -55,6 +56,7 @@ Future<CaptureDraft> attachDedupCandidates(AppDatabase db, CaptureDraft draft) a
               confidence: item.confidence,
               notes: item.notes,
               kanjiCandidates: item.kanjiCandidates,
+              kanaCandidates: item.kanaCandidates,
               meaningCandidates: item.meaningCandidates,
               handwrittenGloss: item.handwrittenGloss,
               existingMatch: match,

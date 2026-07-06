@@ -29,6 +29,7 @@ class ExistingWordMatch {
     required this.kana,
     required this.kanji,
     required this.meaning,
+    required this.role,
     required this.exampleSentences,
   });
 
@@ -36,6 +37,7 @@ class ExistingWordMatch {
   final String kana;
   final String kanji;
   final String? meaning;
+  final WordRole role;
   final List<String> exampleSentences;
 }
 
@@ -52,6 +54,7 @@ class VocabDraftItem {
     required this.confidence,
     this.notes = '',
     this.kanjiCandidates = const [],
+    this.kanaCandidates = const [],
     this.meaningCandidates = const [],
     this.handwrittenGloss,
     this.existingMatch,
@@ -75,6 +78,11 @@ class VocabDraftItem {
   /// ever emits one kanji guess, so this is usually just `[kanji]`; ranked
   /// alternates are a known extractor gap (capture-loop.md §4).
   final List<String> kanjiCandidates;
+
+  /// Same idea as [kanjiCandidates] but for the kana reading: tap to pick
+  /// rather than type, with a "Type (rōmaji)" fallback in the UI for the rare
+  /// case none of the candidates are right. Usually just `[kana]` today.
+  final List<String> kanaCandidates;
 
   /// Meaning alternates offered as chips (used for picture-derived words,
   /// where the meaning is a guess from a drawing). A handwritten margin gloss,
@@ -122,6 +130,7 @@ class VocabDraftItem {
       confidence: confidence,
       notes: notes,
       kanjiCandidates: kanjiCandidates,
+      kanaCandidates: kanaCandidates,
       meaningCandidates: meaningCandidates,
       handwrittenGloss: handwrittenGloss,
       existingMatch: existingMatch,
@@ -220,7 +229,7 @@ class CaptureDraft {
       );
 }
 
-enum QueueItemType { vocab, template, dedup }
+enum QueueItemType { vocab, pictureWord, template, dedup }
 
 /// A stable pointer into a [CaptureDraft]'s vocabulary/templates list, used as
 /// the queue's unit of navigation. A vocab item can appear as both a
@@ -248,7 +257,9 @@ List<QueueRef> buildQueue(CaptureDraft draft) {
   for (var i = 0; i < draft.vocabulary.length; i++) {
     final item = draft.vocabulary[i];
     if (item.hasDedupCandidate) refs.add(QueueRef(QueueItemType.dedup, i));
-    if (item.needsReview) refs.add(QueueRef(QueueItemType.vocab, i));
+    if (item.needsReview) {
+      refs.add(QueueRef(item.isPictureDerived ? QueueItemType.pictureWord : QueueItemType.vocab, i));
+    }
   }
   for (var i = 0; i < draft.templates.length; i++) {
     if (draft.templates[i].needsReview) {

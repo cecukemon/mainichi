@@ -50,14 +50,27 @@ String _vocabSkipReason(VocabDraftItem item) {
 /// A vocab item's applicable queue refs are skipped if either its dedup check
 /// or its field review was explicitly left skipped (capture-loop.md §3: a
 /// skip means the whole item isn't written, not just the sub-decision).
+/// Field review may be a [QueueItemType.vocab] or [QueueItemType.pictureWord]
+/// ref depending on [VocabDraftItem.isPictureDerived].
 bool _vocabIsSkipped(int index, Set<QueueRef> skippedRefs) =>
     skippedRefs.contains(QueueRef(QueueItemType.dedup, index)) ||
-    skippedRefs.contains(QueueRef(QueueItemType.vocab, index));
+    skippedRefs.contains(QueueRef(QueueItemType.vocab, index)) ||
+    skippedRefs.contains(QueueRef(QueueItemType.pictureWord, index));
+
+/// A vocab item explicitly discarded as junk — excluded entirely (no write,
+/// no skipped summary entry), unlike a real skip.
+bool _vocabIsDiscarded(int index, Set<QueueRef> discardedRefs) =>
+    discardedRefs.contains(QueueRef(QueueItemType.vocab, index)) ||
+    discardedRefs.contains(QueueRef(QueueItemType.pictureWord, index));
 
 /// A commit-screen preview computed without touching the DB — same shape as
 /// [CommitResult], but "merged" only reflects confirmed dedup matches, not
 /// same-batch duplicates (those are only caught during the actual commit).
-CommitResult previewCommit(CaptureDraft draft, Set<QueueRef> skippedRefs) {
+CommitResult previewCommit(
+  CaptureDraft draft,
+  Set<QueueRef> skippedRefs, {
+  Set<QueueRef> discardedRefs = const {},
+}) {
   var newWordCount = 0;
   var mergedCount = 0;
   var kanjiUpgradedCount = 0;
@@ -65,7 +78,9 @@ CommitResult previewCommit(CaptureDraft draft, Set<QueueRef> skippedRefs) {
 
   for (var i = 0; i < draft.vocabulary.length; i++) {
     final item = draft.vocabulary[i];
-    if (_vocabIsSkipped(i, skippedRefs)) {
+    if (_vocabIsDiscarded(i, discardedRefs)) {
+      // Excluded entirely — not written, not counted as skipped.
+    } else if (_vocabIsSkipped(i, skippedRefs)) {
       skipped.add(SkippedItemSummary(label: _vocabLabel(item), reason: _vocabSkipReason(item)));
     } else if (item.existingMatch != null && item.mergeDecision == MergeDecision.merge) {
       mergedCount++;
@@ -99,6 +114,7 @@ Future<CommitResult> runCommit(
   AppDatabase db,
   CaptureDraft draft, {
   Set<QueueRef> skippedRefs = const {},
+  Set<QueueRef> discardedRefs = const {},
 }) async {
   final importId = await db.into(db.imports).insert(
         ImportsCompanion.insert(rawDraftJson: const Value(null)),
@@ -112,6 +128,7 @@ Future<CommitResult> runCommit(
 
   for (var i = 0; i < draft.vocabulary.length; i++) {
     final item = draft.vocabulary[i];
+    if (_vocabIsDiscarded(i, discardedRefs)) continue;
     if (_vocabIsSkipped(i, skippedRefs)) {
       skipped.add(SkippedItemSummary(label: _vocabLabel(item), reason: _vocabSkipReason(item)));
       continue;

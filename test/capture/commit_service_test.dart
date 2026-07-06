@@ -34,6 +34,7 @@ ExistingWordMatch _match(int wordId, {String kana = 'たべる', String kanji = 
       kana: kana,
       kanji: kanji,
       meaning: null,
+      role: WordRole.verb,
       exampleSentences: const [],
     );
 
@@ -84,6 +85,7 @@ void main() {
             kana: 'たべる',
             kanji: '食べる',
             meaning: 'to eat',
+            role: WordRole.verb,
             exampleSentences: const [],
           ),
           mergeDecision: MergeDecision.merge,

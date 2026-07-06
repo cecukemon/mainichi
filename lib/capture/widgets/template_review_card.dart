@@ -9,6 +9,11 @@ import '../models.dart';
 
 const _slotColors = [Colors.blue, Colors.purple, Colors.teal, Colors.brown];
 
+/// Only these roles conjugate — a Form dropdown on a non-conjugating slot
+/// (e.g. a noun) would offer a meaningless choice (design handoff, card B).
+bool _conjugates(WordRole role) =>
+    role == WordRole.verb || role == WordRole.iAdjective || role == WordRole.naAdjective;
+
 class TemplateReviewCard extends StatefulWidget {
   const TemplateReviewCard({
     super.key,
@@ -45,7 +50,36 @@ class _TemplateReviewCardState extends State<TemplateReviewCard> {
             label: const Text('Template — slot guess'),
             backgroundColor: Colors.orange.withValues(alpha: 0.15),
           ),
-          const SizedBox(height: 16),
+          if (widget.item.example.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('From the worksheet', style: Theme.of(context).textTheme.labelMedium),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                border: Border.all(color: Theme.of(context).dividerColor),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                widget.item.example,
+                style: TextStyle(fontSize: 17, color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_downward, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Text(
+                    'generalized to a reusable template',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
           Text('Sentence', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 6),
           Container(
@@ -144,27 +178,56 @@ class _SlotEditor extends StatelessWidget {
             child: Text('{${slot.name}}', style: TextStyle(color: color, fontWeight: FontWeight.w600)),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<WordRole>(
-                  initialValue: slot.role,
-                  decoration: const InputDecoration(labelText: 'Role', isDense: true, border: OutlineInputBorder()),
-                  items: [for (final r in WordRole.values) DropdownMenuItem(value: r, child: Text(r.name))],
-                  onChanged: (v) => onChanged(slot.copyWith(role: v)),
+          if (_conjugates(slot.role))
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<WordRole>(
+                    initialValue: slot.role,
+                    decoration: const InputDecoration(labelText: 'Role', isDense: true, border: OutlineInputBorder()),
+                    items: [for (final r in WordRole.values) DropdownMenuItem(value: r, child: Text(r.name))],
+                    onChanged: (v) => onChanged(slot.copyWith(role: v)),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: DropdownButtonFormField<SlotForm>(
-                  initialValue: slot.form,
-                  decoration: const InputDecoration(labelText: 'Form', isDense: true, border: OutlineInputBorder()),
-                  items: [for (final f in SlotForm.values) DropdownMenuItem(value: f, child: Text(f.name))],
-                  onChanged: (v) => onChanged(slot.copyWith(form: v)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<SlotForm>(
+                    initialValue: slot.form,
+                    decoration: const InputDecoration(labelText: 'Form', isDense: true, border: OutlineInputBorder()),
+                    items: [for (final f in SlotForm.values) DropdownMenuItem(value: f, child: Text(f.name))],
+                    onChanged: (v) => onChanged(slot.copyWith(form: v)),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<WordRole>(
+                    initialValue: slot.role,
+                    decoration: const InputDecoration(labelText: 'Role', isDense: true, border: OutlineInputBorder()),
+                    items: [for (final r in WordRole.values) DropdownMenuItem(value: r, child: Text(r.name))],
+                    onChanged: (v) => onChanged(slot.copyWith(role: v)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.remove, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          "${slot.role.name}s don't conjugate",
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );

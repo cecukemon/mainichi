@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../capture_providers.dart';
 import '../models.dart';
 import '../widgets/dedup_review_card.dart';
+import '../widgets/picture_word_review_card.dart';
 import '../widgets/template_review_card.dart';
 import '../widgets/vocab_review_card.dart';
 import 'commit_screen.dart';
@@ -75,6 +76,14 @@ class ReviewQueueScreen extends ConsumerWidget {
           item: draft.vocabulary[ref.index],
           onApprove: notifier.approveCurrentVocab,
           onSkip: notifier.skipCurrent,
+          onDiscard: notifier.discardCurrentVocab,
+        );
+      case QueueItemType.pictureWord:
+        return PictureWordReviewCard(
+          item: draft.vocabulary[ref.index],
+          onApprove: notifier.approveCurrentVocab,
+          onSkip: notifier.skipCurrent,
+          onDiscard: notifier.discardCurrentVocab,
         );
       case QueueItemType.template:
         return TemplateReviewCard(
@@ -109,6 +118,7 @@ class ReviewQueueScreen extends ConsumerWidget {
     switch (ref.type) {
       case QueueItemType.dedup:
       case QueueItemType.vocab:
+      case QueueItemType.pictureWord:
         final item = state.draft!.vocabulary[ref.index];
         return item.kanji.isNotEmpty ? '${item.kanji} (${item.kana})' : item.kana;
       case QueueItemType.template:
