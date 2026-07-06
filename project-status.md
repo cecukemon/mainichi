@@ -22,8 +22,6 @@ Decisions not yet made, surfaced here so they're visible on re-orientation. Reso
 ## Bugs
 Known defects, from the 2026-07-06 code-vs-spec review. Real problems in code that exists today — distinct from open questions (decisions not yet made) and planned work. Remove entries as they're fixed.
 
-- **`runCommit` is not transactional** — capture-loop.md §3 promises "single commit transaction per photo", but `lib/capture/commit_service.dart` does ~2N sequential inserts with no `db.transaction(...)`. A crash mid-commit leaves a half-imported worksheet and a dangling Imports row.
-- **The Imports row is written empty** — `runCommit` inserts `rawDraftJson: null` and no `sourceImage`/`model`, defeating the table's stated purpose (D13: re-review/debug an import without re-calling the API). Fixture-driven today; must be fixed when the live extractor call is wired up.
 - **"Not a match" can be silently overridden** — if the user rejects a dedup match but the item is an exact `(kana, kanji, role)` duplicate, the same-batch check in `runCommit` merges it anyway and reports it as merged, contradicting the explicit decision. (The capture-loop.md §4 open question, currently resolved implicitly against the user.) Should at least surface.
 - **Model ids are stale** — `claude-sonnet-4-6` predates Sonnet 5 (`claude-sonnet-5`). The spec's "verify before shipping" trigger has arrived; re-run the Opus-ceiling/Sonnet-holds comparison on current ids when convenient.
 
@@ -45,7 +43,7 @@ Known defects, from the 2026-07-06 code-vs-spec review. Real problems in code th
 Feature doc: `features/capture-loop.md` (flow, key decisions, mockups).
 - [done] worksheet extraction call — vision + structured output, validated live (`lib/extraction/`, `tool/extract_worksheet.dart`)
 - [done] extraction emits per-slot conjugation `form` — the D12 gap closed (schema + prompt, 2026-07-06); *not yet re-validated against a real worksheet with conjugated patterns*
-- [done] import-commit layer — draft → DB rows, one commit per photo (`lib/capture/commit_service.dart`; see Bugs: not yet transactional, Imports row written empty)
+- [done] import-commit layer — draft → DB rows, atomic `db.transaction` per photo, writing real provenance (source image, model, verbatim raw draft) to the Imports row (`lib/capture/commit_service.dart`, decision log D34)
 - [done] dedup on import — kana-match proposal + confirm-in-review, merge attaches example (`lib/capture/dedup.dart`)
 - [done] kanji/meaning upgrade on merge — a confirmed merge fills an empty kanji (clearing `kanaOnly`) or missing meaning on the existing entry, never overwriting taught values (D26, 2026-07-06); the kana-first-kanji-later class sequence no longer strands entries kana-only or forks duplicates
 - [done] confidence-tiered review UI — all 5 screens (triage → queue → commit → done), Riverpod-driven, widget-tested (`lib/capture/screens/`)

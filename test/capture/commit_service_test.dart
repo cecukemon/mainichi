@@ -253,4 +253,58 @@ void main() {
     expect(result.mergedCount, 1);
     expect(await db.select(db.words).get(), hasLength(1));
   });
+
+  test('writes import provenance (source image, model, raw draft) to the Imports row', () async {
+    final draft = CaptureDraft(
+      worksheetTitle: '',
+      worksheetTopic: '',
+      vocabulary: [_vocab(kana: 'たべる', kanji: '食べる')],
+      templates: const [],
+      sourceImage: '/tmp/worksheet.jpg',
+      model: 'claude-opus-4-8',
+      rawDraftJson: '{"worksheet":{"title":""}}',
+    );
+
+    await runCommit(db, draft);
+
+    final import = await db.select(db.imports).getSingle();
+    expect(import.sourceImage, '/tmp/worksheet.jpg');
+    expect(import.model, 'claude-opus-4-8');
+    expect(import.rawDraftJson, '{"worksheet":{"title":""}}');
+  });
+
+  test('a mid-commit failure rolls back the whole import, leaving no partial rows', () async {
+    // Two existing rows differing only by kanji: upgrading the kana-only one
+    // to 飲む on merge would collide with the other on (kana, kanji, role) —
+    // the unguarded collision noted in decision log D26. Used here purely to
+    // force a throw partway through a commit.
+    final target = await db.into(db.words).insert(
+          WordsCompanion.insert(kana: 'のむ', role: WordRole.verb, kanaOnly: const Value(true)),
+        );
+    await db.into(db.words).insert(
+          WordsCompanion.insert(kana: 'のむ', kanji: const Value('飲む'), role: WordRole.verb),
+        );
+
+    final draft = CaptureDraft(
+      worksheetTitle: '',
+      worksheetTopic: '',
+      vocabulary: [
+        _vocab(kana: 'たべる', kanji: '食べる'), // inserts cleanly first
+        _vocab(
+          kana: 'のむ',
+          kanji: '飲む',
+          existingMatch: _match(target, kana: 'のむ'),
+          mergeDecision: MergeDecision.merge,
+        ), // kanji-upgrade UPDATE collides -> throws mid-commit
+      ],
+      templates: const [],
+    );
+
+    await expectLater(runCommit(db, draft), throwsA(anything));
+
+    // The first word insert AND the Imports row are both rolled back: only the
+    // two pre-seeded words remain, and no import provenance was persisted.
+    expect(await db.select(db.words).get(), hasLength(2));
+    expect(await db.select(db.imports).get(), isEmpty);
+  });
 }

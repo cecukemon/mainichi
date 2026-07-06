@@ -192,6 +192,9 @@ class CaptureDraft {
     required this.vocabulary,
     required this.templates,
     this.ignoredHandwrittenNotes = const [],
+    this.sourceImage,
+    this.model,
+    this.rawDraftJson,
   });
 
   final String worksheetTitle;
@@ -199,6 +202,15 @@ class CaptureDraft {
   final List<VocabDraftItem> vocabulary;
   final List<TemplateDraftItem> templates;
   final List<String> ignoredHandwrittenNotes;
+
+  /// Import provenance, written to the `Imports` row on commit so an import
+  /// can be re-reviewed/debugged without re-calling the API (spec §3 / D13).
+  /// All null for the hand-built demo fixture, which has no real photo or
+  /// model response behind it; populated by `draftFromExtraction` on a live
+  /// import.
+  final String? sourceImage;
+  final String? model;
+  final String? rawDraftJson;
 
   int get highConfidenceCount =>
       vocabulary.where((v) => !v.needsReview).length +
@@ -226,6 +238,9 @@ class CaptureDraft {
         vocabulary: vocabulary ?? this.vocabulary,
         templates: templates ?? this.templates,
         ignoredHandwrittenNotes: ignoredHandwrittenNotes,
+        sourceImage: sourceImage,
+        model: model,
+        rawDraftJson: rawDraftJson,
       );
 }
 

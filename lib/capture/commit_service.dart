@@ -110,14 +110,32 @@ CommitResult previewCommit(
   );
 }
 
+/// One photo, one commit — run atomically so a crash mid-write can't leave a
+/// half-imported worksheet plus a dangling Imports row (capture-loop.md §3).
 Future<CommitResult> runCommit(
   AppDatabase db,
   CaptureDraft draft, {
   Set<QueueRef> skippedRefs = const {},
   Set<QueueRef> discardedRefs = const {},
-}) async {
+}) {
+  return db.transaction(() => _runCommit(db, draft, skippedRefs, discardedRefs));
+}
+
+Future<CommitResult> _runCommit(
+  AppDatabase db,
+  CaptureDraft draft,
+  Set<QueueRef> skippedRefs,
+  Set<QueueRef> discardedRefs,
+) async {
+  // Provenance (source photo, model, raw draft) lets an import be re-reviewed
+  // or debugged without re-calling the API (D13). Null on the demo fixture,
+  // which has no real photo or model response behind it.
   final importId = await db.into(db.imports).insert(
-        ImportsCompanion.insert(rawDraftJson: const Value(null)),
+        ImportsCompanion.insert(
+          sourceImage: Value(draft.sourceImage),
+          model: Value(draft.model),
+          rawDraftJson: Value(draft.rawDraftJson),
+        ),
       );
 
   var newWordCount = 0;
