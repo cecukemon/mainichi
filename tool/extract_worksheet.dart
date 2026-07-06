@@ -67,7 +67,7 @@ Future<Map<String, dynamic>> _extract(
   final bytes = await image.readAsBytes();
   final body = buildExtractionRequest(
     base64Image: base64Encode(bytes),
-    mediaType: _mediaTypeFor(image.path),
+    mediaType: mediaTypeForPath(image.path),
   );
 
   final req = await client.postUrl(Uri.parse(_endpoint));
@@ -83,12 +83,4 @@ Future<Map<String, dynamic>> _extract(
     throw 'HTTP ${resp.statusCode}: $text';
   }
   return parseExtractionResponse(jsonDecode(text) as Map<String, dynamic>);
-}
-
-String _mediaTypeFor(String path) {
-  final p = path.toLowerCase();
-  if (p.endsWith('.png')) return 'image/png';
-  if (p.endsWith('.webp')) return 'image/webp';
-  if (p.endsWith('.gif')) return 'image/gif';
-  return 'image/jpeg';
 }

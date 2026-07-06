@@ -82,15 +82,26 @@ class CaptureQueueState {
 }
 
 class CaptureQueueNotifier extends StateNotifier<CaptureQueueState> {
-  CaptureQueueNotifier(this._db) : super(const CaptureQueueState()) {
-    _init();
-  }
+  CaptureQueueNotifier(this._db) : super(const CaptureQueueState());
 
   final AppDatabase _db;
 
-  Future<void> _init() async {
+  /// Loads the hand-written demo fixture (capture-loop.md §4) — the "New
+  /// import" button's flow. Seeds a demo Bunko entry first so the dedup-merge
+  /// card has something real to match against.
+  Future<void> loadDemoFixture() async {
     await seedDemoBunko(_db);
-    final draft = await attachDedupCandidates(_db, buildSampleDraft());
+    await _load(buildSampleDraft());
+  }
+
+  /// Loads a draft built from a live extraction call — the "New import from
+  /// photo" flow (project-status.md "live extractor call from the app").
+  /// Unlike the demo fixture, does not touch `seedDemoBunko`: a live import
+  /// must never write demo data into the user's real Bunko.
+  Future<void> loadFromExtraction(CaptureDraft draft) => _load(draft);
+
+  Future<void> _load(CaptureDraft rawDraft) async {
+    final draft = await attachDedupCandidates(_db, rawDraft);
     state = CaptureQueueState(draft: draft, order: buildQueue(draft));
   }
 

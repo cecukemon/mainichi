@@ -275,6 +275,17 @@ Map<String, dynamic> buildExtractionRequest({
   };
 }
 
+/// Guesses the Messages API media type from a file extension. Shared by the
+/// CLI transport (`tool/extract_worksheet.dart`) and the in-app one
+/// (`lib/extraction/extraction_client.dart`).
+String mediaTypeForPath(String path) {
+  final p = path.toLowerCase();
+  if (p.endsWith('.png')) return 'image/png';
+  if (p.endsWith('.webp')) return 'image/webp';
+  if (p.endsWith('.gif')) return 'image/gif';
+  return 'image/jpeg';
+}
+
 /// Thrown when the model declines the request (spec §10.3 / Fable-style refusal
 /// handling — guard before reading content).
 class ExtractionRefused implements Exception {

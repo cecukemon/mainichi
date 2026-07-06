@@ -45,6 +45,15 @@ dependencies:
   path_provider: ^2.1.0 # locates the on-device app-support directory for the DB file
   path: ^1.9.0 # join the DB filename onto that directory
 
+  # Keychain-backed storage for the Anthropic API key (spec §10.1/§10.4 —
+  # live in-app extraction needs a key on the phone, not the CLI's env var).
+  flutter_secure_storage: ^9.2.2
+
+  # Live worksheet extraction call from the app (spec §10.1: the CLI's
+  # dart:io HttpClient becomes dio in the app; D9 offline-capable interface).
+  dio: ^5.10.0
+  image_picker: ^1.2.3 # in-app photo source for the live import flow
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -59,6 +68,10 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+  # Only used to fake ImagePickerPlatform in PhotoImportScreen's widget test
+  # (a transitive dep of image_picker; declared directly so tests can import it).
+  image_picker_platform_interface: ^2.11.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

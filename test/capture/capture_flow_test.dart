@@ -20,15 +20,28 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// Builds a container wired to [db] with the demo fixture already loaded —
+/// mirrors what the "New import" button now triggers explicitly before
+/// navigating (loading used to be an automatic side effect of constructing
+/// `captureQueueProvider`; it no longer is, since a live import must reach
+/// `TriageScreen` without ever seeding demo Bunko data).
+Future<ProviderContainer> _demoContainer(AppDatabase db) async {
+  final container = ProviderContainer(overrides: [databaseProvider.overrideWithValue(db)]);
+  addTearDown(container.dispose);
+  await container.read(captureQueueProvider.notifier).loadDemoFixture();
+  return container;
+}
+
 void main() {
   testWidgets('triage -> review queue -> commit -> done, end to end', (tester) async {
     _usePhoneSizedSurface(tester);
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final container = await _demoContainer(db);
 
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
+      UncontrolledProviderScope(
+        container: container,
         child: const MaterialApp(home: TriageScreen()),
       ),
     );
@@ -78,10 +91,11 @@ void main() {
     _usePhoneSizedSurface(tester);
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final container = await _demoContainer(db);
 
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
+      UncontrolledProviderScope(
+        container: container,
         child: const MaterialApp(home: TriageScreen()),
       ),
     );
@@ -103,10 +117,11 @@ void main() {
     _usePhoneSizedSurface(tester);
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final container = await _demoContainer(db);
 
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
+      UncontrolledProviderScope(
+        container: container,
         child: const MaterialApp(home: TriageScreen()),
       ),
     );
@@ -125,10 +140,11 @@ void main() {
     _usePhoneSizedSurface(tester);
     final db = AppDatabase(NativeDatabase.memory());
     addTearDown(db.close);
+    final container = await _demoContainer(db);
 
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [databaseProvider.overrideWithValue(db)],
+      UncontrolledProviderScope(
+        container: container,
         child: const MaterialApp(home: TriageScreen()),
       ),
     );
