@@ -1,0 +1,44 @@
+/// Storage for the user's Anthropic API key (project-status.md Bugs: "iOS API
+/// key delivery is unaddressed" — the CLI tools read `~/.config/anthropic/key`,
+/// which doesn't exist on a phone).
+///
+/// Kept behind an interface, same pattern as the DB connection and the
+/// extraction/generation HTTP calls, so the real Keychain-backed
+/// implementation can be swapped for a fake in tests.
+library;
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+abstract class ApiKeyStore {
+  Future<String?> read();
+  Future<void> write(String key);
+  Future<void> clear();
+}
+
+const _apiKeyStorageKey = 'anthropic_api_key';
+
+/// Keychain-backed on iOS (Keystore on Android, for parity — this app is
+/// iOS-only per CLAUDE.md, but `flutter_secure_storage` requires no extra
+/// setup to also work there). `first_unlock` accessibility keeps the key
+/// readable for background work after the device has been unlocked once,
+/// without requiring it to stay unlocked.
+class SecureApiKeyStore implements ApiKeyStore {
+  SecureApiKeyStore()
+      : _storage = const FlutterSecureStorage(
+          iOptions: IOSOptions(
+            accessibility: KeychainAccessibility.first_unlock,
+          ),
+        );
+
+  final FlutterSecureStorage _storage;
+
+  @override
+  Future<String?> read() => _storage.read(key: _apiKeyStorageKey);
+
+  @override
+  Future<void> write(String key) =>
+      _storage.write(key: _apiKeyStorageKey, value: key);
+
+  @override
+  Future<void> clear() => _storage.delete(key: _apiKeyStorageKey);
+}
