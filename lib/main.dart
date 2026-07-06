@@ -6,6 +6,7 @@ import 'capture/screens/photo_import_screen.dart';
 import 'capture/screens/triage_screen.dart';
 import 'data/connection.dart';
 import 'data/database.dart';
+import 'reading/screens/furigana_preview_screen.dart';
 import 'settings/api_key_store.dart';
 import 'settings/screens/settings_screen.dart';
 import 'settings/settings_providers.dart';
@@ -77,6 +78,15 @@ class HomeScreen extends ConsumerWidget {
               ),
               icon: const Icon(Icons.add_a_photo_outlined),
               label: const Text('New import from photo'),
+            ),
+            const SizedBox(height: 12),
+            // Rendering-spike preview; replaced by the real reading screen.
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FuriganaPreviewScreen()),
+              ),
+              icon: const Icon(Icons.translate_outlined),
+              label: const Text('Furigana preview (spike)'),
             ),
           ],
         ),

@@ -274,6 +274,49 @@ void main() {
       );
       expect(report.violations, contains(contains('no kanji taught yet')));
     });
+
+    test('flags a hallucinated surface tagged with a valid vocab id (laundering gap)', () {
+      // ねこ carries ほん's perfectly valid id — every id-based check passes,
+      // and before the surface↔entry check this rendered ねこ with ほん's
+      // furigana. The sibling hole of the D24 reconstruction check.
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'これ', vocabId: 1),
+          GenToken(surface: 'は', vocabId: 0),
+          GenToken(surface: 'ねこ', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: 'これは ねこ です'),
+        _seed,
+      );
+      expect(report.violations.single, contains('not a recognizable form'));
+    });
+
+    test('accepts a conjugated surface of a conjugating entry', () {
+      const seedWithVerb = GenerationSeed(
+        vocab: [
+          SeedWord(id: 20, kana: 'すずき', kanji: '鈴木', role: 'name'),
+          SeedWord(id: 30, kana: 'いく', kanji: '行く', role: 'verb'),
+        ],
+        structures: [],
+      );
+      final report = validateScope(
+        GeneratedConversation(
+          lines: [
+            GenLine(
+              speakerNameId: 20,
+              speakerSurface: 'すずき',
+              text: '行きます',
+              structureId: 0,
+              tokens: const [GenToken(surface: '行きます', vocabId: 30)],
+            ),
+          ],
+          usedVocabIds: const [30],
+          usedStructureIds: const [],
+        ),
+        seedWithVerb,
+      );
+      expect(report.ok, isTrue);
+    });
   });
 
   test('renderConversation pulls furigana from the store, not the model', () {
@@ -287,5 +330,36 @@ void main() {
     );
     expect(out, startsWith('鈴木[すずき]:')); // speaker name furigana
     expect(out, contains('これはほんです')); // kana tokens, no furigana
+  });
+
+  test('renderConversation keeps a conjugated surface, ruby on the stem only', () {
+    // The pre-spike renderer substituted the base form (行く[いく]) into a
+    // line that said 行きます whenever the entry had kanji — masked until now
+    // because the demo verbs were kana-only.
+    const seed = GenerationSeed(
+      vocab: [
+        SeedWord(id: 20, kana: 'すずき', kanji: '鈴木', role: 'name'),
+        SeedWord(id: 30, kana: 'いく', kanji: '行く', role: 'verb'),
+      ],
+      structures: [],
+    );
+    final out = renderConversation(
+      GeneratedConversation(
+        lines: [
+          GenLine(
+            speakerNameId: 20,
+            speakerSurface: 'すずき',
+            text: '行きます。',
+            structureId: 0,
+            tokens: const [GenToken(surface: '行きます。', vocabId: 30)],
+          ),
+        ],
+        usedVocabIds: const [30],
+        usedStructureIds: const [],
+      ),
+      seed,
+    );
+    expect(out, contains('行[い]きます。'));
+    expect(out, isNot(contains('行く')));
   });
 }

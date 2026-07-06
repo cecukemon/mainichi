@@ -14,6 +14,8 @@ library;
 
 import 'dart:convert';
 
+import '../japanese/okurigana.dart';
+
 /// Fast mid-tier model for frequent, latency-sensitive generation (decision D3).
 /// Validate quality on `claude-opus-4-8` first, then confirm this holds.
 const String generationModel = 'claude-sonnet-4-6';
@@ -386,6 +388,12 @@ final RegExp _glueFactoring = RegExp(
 bool isKnownGlue(String surface) =>
     surface.isNotEmpty && _glueFactoring.hasMatch(surface);
 
+/// Roles whose surface forms legitimately differ from the stored base form.
+/// Everything else (nouns, names, particles, ...) must match its entry
+/// exactly. Mirrors the capture UI's notion of conjugating roles
+/// (`template_review_card.dart`).
+const Set<String> conjugatingRoles = {'verb', 'i_adjective', 'na_adjective'};
+
 class ScopeReport {
   ScopeReport(this.violations);
   final List<String> violations;
@@ -446,10 +454,31 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
       // forms).
       if (!tok.isGlue) {
         final word = byId[tok.vocabId];
-        if (word != null && word.kanji.isEmpty && _hasKanji(tok.surface)) {
+        if (word == null) continue;
+        if (word.kanji.isEmpty && _hasKanji(tok.surface)) {
           violations.add(
               'line $n: token "${tok.surface}" uses kanji for vocab id ${tok.vocabId} '
               '("${word.kana}"), which has no kanji taught yet');
+          continue; // the surface check below would flag the same token again
+        }
+        // Surface↔entry consistency: the surface must actually be a form of
+        // the entry it claims — its kana/kanji, or (for a conjugating role) a
+        // stem-preserving conjugation of it. Closes the laundering gap where
+        // a hallucinated surface tagged with a *valid* in-scope vocab id
+        // passed every id-based check and would have rendered the wrong
+        // furigana (the sibling hole of the D24 reconstruction check).
+        final segments = furiganaSegments(
+          surface: tok.surface,
+          kana: word.kana,
+          kanji: word.kanji,
+          conjugates: conjugatingRoles.contains(word.role),
+        );
+        if (segments == null) {
+          violations.add(
+              'line $n: token "${tok.surface}" is not a recognizable form of '
+              'vocab id ${tok.vocabId} ("${word.kana}"'
+              '${word.kanji.isEmpty ? '' : ' / "${word.kanji}"'}) — possible '
+              'hallucinated surface or wrong vocab id');
         }
       }
     }
@@ -477,24 +506,36 @@ String _stripWhitespace(String s) => s.replaceAll(RegExp(r'[\s　]+'), '');
 // Display (validates that furigana round-trips from the store, not the model).
 // ---------------------------------------------------------------------------
 
-/// Renders the conversation for a terminal: `Name: line` with furigana shown as
-/// `kanji[reading]` for tokens whose vocab entry has a kanji form, the reading
-/// taken from the store (the seed), never from the model.
+/// Renders the conversation for a terminal: `Name: line` with furigana shown
+/// as `stem[reading]` per segment, the reading taken from the store (the
+/// seed), never from the model. Uses the okurigana split so a conjugated
+/// surface keeps its conjugation (行きます → 行[い]きます) instead of being
+/// replaced by the base form — the D5 okurigana fix.
 String renderConversation(GeneratedConversation convo, GenerationSeed seed) {
   final byId = seed.vocabById;
   final buf = StringBuffer();
   for (final line in convo.lines) {
     final speaker = byId[line.speakerNameId];
-    final speakerLabel =
-        speaker != null ? _withFurigana(speaker) : line.speakerSurface;
-    final rendered = line.tokens.map((t) {
-      final w = byId[t.vocabId];
-      return (w != null && w.kanji.isNotEmpty) ? _withFurigana(w) : t.surface;
-    }).join();
+    final speakerLabel = speaker != null
+        ? _renderToken(speaker.kanji.isNotEmpty ? speaker.kanji : speaker.kana, speaker)
+        : line.speakerSurface;
+    final rendered =
+        line.tokens.map((t) => _renderToken(t.surface, byId[t.vocabId])).join();
     buf.writeln('$speakerLabel: $rendered');
   }
   return buf.toString();
 }
 
-String _withFurigana(SeedWord w) =>
-    w.kanji.isNotEmpty ? '${w.kanji}[${w.kana}]' : w.kana;
+String _renderToken(String surface, SeedWord? w) {
+  if (w == null || w.kanji.isEmpty) return surface;
+  final segments = furiganaSegments(
+    surface: surface,
+    kana: w.kana,
+    kanji: w.kanji,
+    conjugates: conjugatingRoles.contains(w.role),
+  );
+  if (segments == null) return surface; // unreconcilable — validator flags it
+  return segments
+      .map((s) => s.ruby == null ? s.base : '${s.base}[${s.ruby}]')
+      .join();
+}
