@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Capture loop - review queue vocab item v1</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --surface-0: #f4f3f0;
+    --surface-1: #edece7;
+    --surface-2: #ffffff;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.18);
+    --border-accent: #378ADD;
+    --text-primary: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --text-muted: #8b8a86;
+    --text-accent: #185FA5;
+    --text-success: #3B6D11;
+    --text-warning: #854F0B;
+    --text-pro: #534AB7;
+    --bg-accent: #E6F1FB;
+    --bg-success: #EAF3DE;
+    --bg-warning: #FAEEDA;
+    --bg-pro: #EEEDFE;
+    --fill-accent: #378ADD;
+    --fill-primary: #1a1a18;
+    --on-primary: #ffffff;
+    --on-accent: #ffffff;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--surface-0);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 32px 16px;
+    margin: 0;
+    color: var(--text-primary);
+  }
+  h2 { font-size: 18px; font-weight: 500; margin: 0; }
+  p { margin: 0; }
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 9px 14px;
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border-strong);
+    background: var(--surface-2);
+    cursor: pointer;
+  }
+  button:hover { background: var(--surface-1); }
+  input, select {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text-primary);
+    height: 36px;
+  }
+</style>
+</head>
+<body>
+<!-- Capture loop: review-queue vocab card, first pass (free-text kanji field). Superseded by review-queue-vocab-item-kanji-candidates.html once free-text kanji entry was ruled out (no Japanese IME assumed) -- kept for history. Renders on Claude Design System tokens and Tabler outline icons; will not render standalone without those loaded. See capture-loop.md. -->
+<div style="background: var(--surface-1); border-radius: 12px; padding: 12px; max-width: 340px; margin: 0 auto;">
+  <div style="background: var(--surface-2); border-radius: 28px; border: 0.5px solid var(--border); overflow: hidden;">
+
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px;">
+      <i class="ti ti-chevron-left" style="font-size: 18px; color: var(--text-secondary);" aria-hidden="true"></i>
+      <span style="font-size: 13px; color: var(--text-secondary);">Item 3 of 8</span>
+      <span style="font-size: 12px; color: var(--text-accent);">Skipped (1)</span>
+    </div>
+
+    <div style="padding: 4px 16px 4px;">
+      <div style="height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 18px;">
+        <div style="height: 100%; width: 25%; background: var(--fill-accent);"></div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 16px;">
+
+      <span style="display: inline-block; font-size: 12px; color: var(--text-warning); background: var(--bg-warning); padding: 3px 10px; border-radius: var(--radius); margin-bottom: 14px;">Vocabulary — low confidence</span>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 4px;">Kanji</p>
+          <input type="text" value="走る" style="width: 100%;" />
+        </div>
+        <div>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 4px;">Kana reading</p>
+          <input type="text" value="はしる" style="width: 100%;" />
+        </div>
+        <div>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 4px;">Meaning</p>
+          <input type="text" value="to jog" style="width: 100%;" />
+        </div>
+        <div>
+          <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 4px;">Role</p>
+          <select style="width: 100%;">
+            <option>Verb</option>
+            <option>Noun</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px; background: var(--surface-1); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 20px;">
+        <i class="ti ti-note" style="font-size: 16px; color: var(--text-muted); flex-shrink: 0;" aria-hidden="true"></i>
+        <div style="flex: 1;">
+          <p style="font-size: 11px; color: var(--text-muted); margin: 0;">Your margin note</p>
+          <p style="font-size: 13px; margin: 2px 0 0;">rennen</p>
+        </div>
+        <button style="font-size: 12px; padding: 4px 10px;">Use this</button>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button style="flex: 1;">Skip</button>
+        <button style="flex: 2; background: var(--fill-primary); color: var(--on-primary); border: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <i class="ti ti-check" style="font-size: 16px;" aria-hidden="true"></i>
+          Approve
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body></html>

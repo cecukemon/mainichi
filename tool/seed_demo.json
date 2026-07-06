@@ -1,0 +1,53 @@
+{
+  "_comment": "Hand-built 'learned so far' set for the generation prototype, drawn from the extracted worksheets (demonstratives これ/それ/あれ + nouns + i-adjectives + names). Stands in for the not-yet-built DB. Names carry kanji so furigana rendering is exercised; スミス is a katakana foreign name. ids 23-30 + structures 11-15 are a verb round: masu-form conjugation is a bigger surface change than i-adjective negation, stress-testing vocab_id attribution harder. わたし/あなた are worksheet-grounded (seen on ws2).",
+  "vocab": [
+    { "id": 1, "kana": "これ", "role": "demonstrative", "meaning": "this", "kana_only": true },
+    { "id": 2, "kana": "それ", "role": "demonstrative", "meaning": "that (near you)", "kana_only": true },
+    { "id": 3, "kana": "あれ", "role": "demonstrative", "meaning": "that over there", "kana_only": true },
+    { "id": 4, "kana": "ほん", "role": "noun", "meaning": "book", "kana_only": true },
+    { "id": 5, "kana": "しんぶん", "role": "noun", "meaning": "newspaper", "kana_only": true },
+    { "id": 6, "kana": "とけい", "role": "noun", "meaning": "clock", "kana_only": true },
+    { "id": 7, "kana": "まんが", "role": "noun", "meaning": "manga", "kana_only": true },
+    { "id": 8, "kana": "いえ", "role": "noun", "meaning": "house", "kana_only": true },
+    { "id": 9, "kana": "えき", "role": "noun", "meaning": "station", "kana_only": true },
+    { "id": 10, "kana": "かいしゃ", "role": "noun", "meaning": "company", "kana_only": true },
+    { "id": 11, "kana": "びょういん", "role": "noun", "meaning": "hospital", "kana_only": true },
+    { "id": 12, "kana": "かばん", "role": "noun", "meaning": "bag", "kana_only": true },
+    { "id": 13, "kana": "なん", "role": "question_word", "meaning": "what", "kana_only": true },
+    { "id": 14, "kana": "おおきい", "role": "i_adjective", "meaning": "big", "kana_only": true },
+    { "id": 15, "kana": "ちいさい", "role": "i_adjective", "meaning": "small", "kana_only": true },
+    { "id": 16, "kana": "あたらしい", "role": "i_adjective", "meaning": "new", "kana_only": true },
+    { "id": 17, "kana": "ふるい", "role": "i_adjective", "meaning": "old", "kana_only": true },
+    { "id": 18, "kana": "おもしろい", "role": "i_adjective", "meaning": "interesting", "kana_only": true },
+    { "id": 20, "kana": "すずき", "kanji": "鈴木", "role": "name", "meaning": "Suzuki (surname)", "kana_only": false },
+    { "id": 21, "kana": "たなか", "kanji": "田中", "role": "name", "meaning": "Tanaka (surname)", "kana_only": false },
+    { "id": 22, "kana": "スミス", "role": "name", "meaning": "Smith (surname)", "kana_only": true },
+
+    { "id": 23, "kana": "わたし", "role": "pronoun", "meaning": "I", "kana_only": true },
+    { "id": 24, "kana": "あなた", "role": "pronoun", "meaning": "you", "kana_only": true },
+    { "id": 25, "kana": "たべる", "role": "verb", "meaning": "to eat", "kana_only": true },
+    { "id": 26, "kana": "のむ", "role": "verb", "meaning": "to drink", "kana_only": true },
+    { "id": 27, "kana": "いく", "role": "verb", "meaning": "to go", "kana_only": true },
+    { "id": 28, "kana": "すし", "role": "noun", "meaning": "sushi", "kana_only": true },
+    { "id": 29, "kana": "みず", "role": "noun", "meaning": "water", "kana_only": true },
+    { "id": 30, "kana": "がっこう", "role": "noun", "meaning": "school", "kana_only": true }
+  ],
+  "structures": [
+    { "id": 1, "template": "これは {noun_1} です", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" } ] },
+    { "id": 2, "template": "それは {noun_1} です", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" } ] },
+    { "id": 3, "template": "あれは {noun_1} です", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" } ] },
+    { "id": 4, "template": "これは {noun_1} ですか", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" } ] },
+    { "id": 5, "template": "はい、それは {noun_1} です", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" } ] },
+    { "id": 6, "template": "いいえ、それは {noun_1} ではありません", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" } ] },
+    { "id": 7, "template": "{noun_1} は なん ですか", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" } ] },
+    { "id": 8, "template": "この {noun_1} は {iadj} です", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" }, { "name": "iadj", "role": "i_adjective", "form": "dictionary" } ] },
+    { "id": 9, "template": "この {noun_1} は {iadj} ですか", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" }, { "name": "iadj", "role": "i_adjective", "form": "dictionary" } ] },
+    { "id": 10, "template": "この {noun_1} は {iadj} ありません", "slots": [ { "name": "noun_1", "role": "noun", "form": "dictionary" }, { "name": "iadj", "role": "i_adjective", "form": "negative" } ] },
+
+    { "id": 11, "template": "わたしは {food} を {verb}", "slots": [ { "name": "food", "role": "noun", "form": "dictionary" }, { "name": "verb", "role": "verb", "form": "polite" } ] },
+    { "id": 12, "template": "わたしは {food} を {verb}", "slots": [ { "name": "food", "role": "noun", "form": "dictionary" }, { "name": "verb", "role": "verb", "form": "polite_negative" } ] },
+    { "id": 13, "template": "{food} を {verb}か", "slots": [ { "name": "food", "role": "noun", "form": "dictionary" }, { "name": "verb", "role": "verb", "form": "polite" } ] },
+    { "id": 14, "template": "わたしは {place} に {verb}", "slots": [ { "name": "place", "role": "noun", "form": "dictionary" }, { "name": "verb", "role": "verb", "form": "polite" } ] },
+    { "id": 15, "template": "{listener} は {food} を {verb}か", "slots": [ { "name": "listener", "role": "name", "form": "dictionary" }, { "name": "food", "role": "noun", "form": "dictionary" }, { "name": "verb", "role": "verb", "form": "polite" } ] }
+  ]
+}

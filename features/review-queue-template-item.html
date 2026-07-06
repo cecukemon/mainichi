@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Capture loop - review queue template item</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --surface-0: #f4f3f0;
+    --surface-1: #edece7;
+    --surface-2: #ffffff;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.18);
+    --border-accent: #378ADD;
+    --text-primary: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --text-muted: #8b8a86;
+    --text-accent: #185FA5;
+    --text-success: #3B6D11;
+    --text-warning: #854F0B;
+    --text-pro: #534AB7;
+    --bg-accent: #E6F1FB;
+    --bg-success: #EAF3DE;
+    --bg-warning: #FAEEDA;
+    --bg-pro: #EEEDFE;
+    --fill-accent: #378ADD;
+    --fill-primary: #1a1a18;
+    --on-primary: #ffffff;
+    --on-accent: #ffffff;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--surface-0);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    padding: 32px 16px;
+    margin: 0;
+    color: var(--text-primary);
+  }
+  h2 { font-size: 18px; font-weight: 500; margin: 0; }
+  p { margin: 0; }
+  button {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 9px 14px;
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border-strong);
+    background: var(--surface-2);
+    cursor: pointer;
+  }
+  button:hover { background: var(--surface-1); }
+  input, select {
+    font-family: inherit;
+    font-size: 14px;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text-primary);
+    height: 36px;
+  }
+</style>
+</head>
+<body>
+<!-- Capture loop: review-queue template card (sentence with colored inline slot tokens, per-slot role/form dropdowns). See capture-loop.md sec 2/3. Renders on Claude Design System tokens and Tabler outline icons; will not render standalone without those loaded. -->
+<div style="background: var(--surface-1); border-radius: 12px; padding: 12px; max-width: 340px; margin: 0 auto;">
+  <div style="background: var(--surface-2); border-radius: 28px; border: 0.5px solid var(--border); overflow: hidden;">
+
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 6px;">
+      <i class="ti ti-chevron-left" style="font-size: 18px; color: var(--text-secondary);" aria-hidden="true"></i>
+      <span style="font-size: 13px; color: var(--text-secondary);">Item 5 of 8</span>
+      <span style="font-size: 12px; color: var(--text-accent);">Skipped (1)</span>
+    </div>
+
+    <div style="padding: 4px 16px 4px;">
+      <div style="height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; margin-bottom: 18px;">
+        <div style="height: 100%; width: 55%; background: var(--fill-accent);"></div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 16px;">
+
+      <span style="display: inline-block; font-size: 12px; color: var(--text-warning); background: var(--bg-warning); padding: 3px 10px; border-radius: var(--radius); margin-bottom: 14px;">Template — slot guess</span>
+
+      <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 8px;">Sentence</p>
+      <div style="background: var(--surface-1); border-radius: var(--radius); padding: 14px; margin-bottom: 18px; font-size: 18px; line-height: 2.1;">
+        わたしは<span style="background: var(--bg-accent); color: var(--text-accent); padding: 2px 6px; border-radius: 4px; margin: 0 2px;">{food}</span>を<span style="background: var(--bg-pro); color: var(--text-pro); padding: 2px 6px; border-radius: 4px; margin: 0 2px;">{verb_1}</span>ます
+      </div>
+
+      <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px;">Slots</p>
+
+      <div style="border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+          <span style="background: var(--bg-accent); color: var(--text-accent); font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">{food}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div>
+            <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 3px;">Role</p>
+            <select style="width: 100%;">
+              <option>Food</option>
+              <option>Object</option>
+            </select>
+          </div>
+          <div>
+            <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 3px;">Form</p>
+            <select style="width: 100%;">
+              <option>Dictionary</option>
+              <option>Polite</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style="border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+          <span style="background: var(--bg-pro); color: var(--text-pro); font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">{verb_1}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <div>
+            <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 3px;">Role</p>
+            <select style="width: 100%;">
+              <option>Verb</option>
+              <option>Adjective</option>
+            </select>
+          </div>
+          <div>
+            <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 3px;">Form</p>
+            <select style="width: 100%;">
+              <option>Polite</option>
+              <option>Dictionary</option>
+              <option>Negative</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button style="flex: 1;">Skip</button>
+        <button style="flex: 2; background: var(--fill-primary); color: var(--on-primary); border: none; display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <i class="ti ti-check" style="font-size: 16px;" aria-hidden="true"></i>
+          Approve
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body></html>
