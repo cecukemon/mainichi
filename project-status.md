@@ -24,6 +24,7 @@ Known defects, from the 2026-07-06 code-vs-spec review. Real problems in code th
 
 - **"Not a match" can be silently overridden** — if the user rejects a dedup match but the item is an exact `(kana, kanji, role)` duplicate, the same-batch check in `runCommit` merges it anyway and reports it as merged, contradicting the explicit decision. (The capture-loop.md §4 open question, currently resolved implicitly against the user.) Should at least surface.
 - **Model ids are stale** — `claude-sonnet-4-6` predates Sonnet 5 (`claude-sonnet-5`). The spec's "verify before shipping" trigger has arrived; re-run the Opus-ceiling/Sonnet-holds comparison on current ids when convenient.
+- **Worksheet photo/crop boxes are always empty** — `WorksheetCropPlaceholder` (`lib/capture/widgets/worksheet_crop_placeholder.dart`) is a purely decorative labeled gray box; it was never wired to accept real image bytes. Triage's "worksheet photo" and the vocab/picture-word review cards' crop boxes render this placeholder for every import, demo or live — a live import now has a real photo (`draft.sourceImage`, the picked bytes) sitting right there unused. Noticed after wiring the live extractor call (session 6/7); not fixed yet.
 
 ## Foundations  [in progress]
 - [done] Feature spec — `japanese-companion-app-spec.md` (living document)
@@ -52,6 +53,7 @@ Feature doc: `features/capture-loop.md` (flow, key decisions, mockups).
 - [done] live extractor call from the app — `dio`-based `LiveExtractionService` behind the offline-capable `ExtractionService` interface (D9), a minimal "New import from photo" camera/gallery entry point, and a pure extractor-JSON→`CaptureDraft` mapper (`lib/extraction/`, `lib/capture/draft_from_extraction.dart`, decision log D33); not yet exercised against the real Anthropic API or a real device camera (tested against fakes only)
 - [planned] in-app image resize/auto-orient/crop before send — the live import today sends the picked photo as-is (aside from `image_picker`'s own `maxWidth` downscale); no custom orientation-correction or worksheet-crop UI yet
 - [planned] extractor kanji candidates + image crop regions (capture-loop.md §4 — review card currently degrades to confirm-or-no-kanji)
+- [planned] explicit close button on the photo/crop zoom dialog (`WorksheetCropPlaceholder._showZoom`, `lib/capture/widgets/worksheet_crop_placeholder.dart`) — today it only dismisses via tap-outside (`showDialog`'s default barrier), on both triage and the review cards
 - [deferred] word segmentation / lemmatization for scope validation (see §9; not needed at beginner stage)
 
 ## 2. Reading exercise  [in progress]
