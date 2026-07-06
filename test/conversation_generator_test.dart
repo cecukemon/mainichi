@@ -189,13 +189,15 @@ void main() {
         _seed,
       );
       expect(report.ok, isFalse);
-      expect(report.violations.single, contains('unknown vocab id 99'));
+      // The factoring check independently flags ねこ too, so two violations.
+      expect(report.violations, contains(contains('unknown vocab id 99')));
+      expect(report.violations, contains(contains('unmatched from "ねこ')));
     });
 
     test('flags tokens that do not reconstruct the line text', () {
       // The out-of-scope word sits only in `text`; the token list omits it,
-      // so every per-token check is blind to it. The reconstruction check is
-      // what catches the discrepancy.
+      // so every per-token check is blind to it. The reconstruction check
+      // catches the discrepancy (and factoring independently flags ねこ).
       final report = validateScope(
         _convo(const [
           GenToken(surface: 'これ', vocabId: 1),
@@ -204,7 +206,7 @@ void main() {
         ], text: 'これは ねこ です'),
         _seed,
       );
-      expect(report.violations.single, contains('do not reconstruct'));
+      expect(report.violations, contains(contains('do not reconstruct')));
     });
 
     test('reconstruction ignores spacing differences between text and tokens', () {
@@ -288,16 +290,24 @@ void main() {
         ], text: 'これは ねこ です'),
         _seed,
       );
-      expect(report.violations.single, contains('not a recognizable form'));
+      expect(report.violations, contains(contains('not a recognizable form')));
     });
 
     test('accepts a conjugated surface of a conjugating entry', () {
+      // The polite form must be taught by a structure for 行きます to be in
+      // scope — the factoring check derives its ending set from slot forms.
       const seedWithVerb = GenerationSeed(
         vocab: [
           SeedWord(id: 20, kana: 'すずき', kanji: '鈴木', role: 'name'),
           SeedWord(id: 30, kana: 'いく', kanji: '行く', role: 'verb'),
         ],
-        structures: [],
+        structures: [
+          SeedStructure(
+            id: 5,
+            template: '{verb_1}',
+            slots: [SeedSlot(name: 'verb_1', role: 'verb', form: 'polite')],
+          ),
+        ],
       );
       final report = validateScope(
         GeneratedConversation(
@@ -316,6 +326,44 @@ void main() {
         seedWithVerb,
       );
       expect(report.ok, isTrue);
+    });
+
+    test('factoring catches an untaught conjugation even when every token-level check passes', () {
+      // 行きましょう (volitional): tokens reconstruct the text, the vocab id
+      // is valid, and the surface passes the per-token stem check (any
+      // pure-kana tail on a taught stem). Only the independent factoring
+      // check — endings gated on taught slot forms — catches that ましょう
+      // was never taught. This is the check's whole reason to exist.
+      const seed = GenerationSeed(
+        vocab: [
+          SeedWord(id: 20, kana: 'すずき', kanji: '鈴木', role: 'name'),
+          SeedWord(id: 30, kana: 'いく', kanji: '行く', role: 'verb'),
+        ],
+        structures: [
+          SeedStructure(
+            id: 5,
+            template: '{verb_1}',
+            slots: [SeedSlot(name: 'verb_1', role: 'verb', form: 'polite')],
+          ),
+        ],
+      );
+      final report = validateScope(
+        GeneratedConversation(
+          lines: [
+            GenLine(
+              speakerNameId: 20,
+              speakerSurface: 'すずき',
+              text: '行きましょう',
+              structureId: 0,
+              tokens: const [GenToken(surface: '行きましょう', vocabId: 30)],
+            ),
+          ],
+          usedVocabIds: const [30],
+          usedStructureIds: const [],
+        ),
+        seed,
+      );
+      expect(report.violations.single, contains('does not factor'));
     });
   });
 

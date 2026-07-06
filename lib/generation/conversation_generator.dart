@@ -15,6 +15,7 @@ library;
 import 'dart:convert';
 
 import '../japanese/okurigana.dart';
+import '../japanese/segmenter.dart';
 
 /// Fast mid-tier model for frequent, latency-sensitive generation (decision D3).
 /// Validate quality on `claude-opus-4-8` first, then confirm this holds.
@@ -407,6 +408,19 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
   final nameIds = seed.nameIds;
   final byId = seed.vocabById;
 
+  // Inputs for the factoring check (below): the closed lexicon, and the
+  // conjugation forms the structure library actually teaches — a ます-form
+  // is only in scope once a taught pattern demands it (dictionary always is).
+  final lexicon = [
+    for (final w in seed.vocab)
+      LexiconEntry(id: w.id, kana: w.kana, kanji: w.kanji, role: w.role),
+  ];
+  final taughtForms = {
+    'dictionary',
+    for (final s in seed.structures)
+      for (final sl in s.slots) sl.form,
+  };
+
   for (var i = 0; i < convo.lines.length; i++) {
     final line = convo.lines[i];
     final n = i + 1;
@@ -428,6 +442,23 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
       violations.add(
           'line $n: tokens do not reconstruct the line text — tokens spell '
           '"$reconstructed" but text is "${line.text}"');
+    }
+    // Independent factoring check (the D6 endgame): every character of the
+    // line must trace to taught material — vocabulary forms, conjugations a
+    // taught pattern demands, grammar glue, punctuation — with no reference
+    // to the model's self-reported tokens at all. Catches what the
+    // token-level checks structurally cannot: an untaught conjugation on a
+    // taught stem (行きましょう), or consistent lying across text and tokens.
+    final factoring = factorLine(
+      line.text,
+      lexicon: lexicon,
+      taughtForms: taughtForms,
+      glue: knownGrammarGlue,
+    );
+    if (!factoring.ok) {
+      violations.add(
+          'line $n: text does not factor into taught material — unmatched '
+          'from "${factoring.unmatchedFrom}"');
     }
     for (final tok in line.tokens) {
       if (tok.vocabId != 0 && !vocabIds.contains(tok.vocabId)) {
