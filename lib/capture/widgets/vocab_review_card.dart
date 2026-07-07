@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/enums.dart';
 import '../models.dart';
-import 'worksheet_crop_placeholder.dart';
+import 'worksheet_photo_box.dart';
 
 class VocabReviewCard extends StatefulWidget {
   const VocabReviewCard({
@@ -92,7 +92,7 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
           const SizedBox(height: 12),
           Text('Compare with the worksheet', style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 6),
-          WorksheetCropPlaceholder(
+          WorksheetPhotoBox(
             label: '${item.kanji.isNotEmpty ? item.kanji : item.kana} · source crop',
           ),
           const SizedBox(height: 16),

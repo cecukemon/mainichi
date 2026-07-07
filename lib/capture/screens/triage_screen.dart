@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../capture_providers.dart';
-import '../widgets/worksheet_crop_placeholder.dart';
+import '../widgets/worksheet_photo_box.dart';
 import 'commit_screen.dart';
 import 'review_queue_screen.dart';
 
@@ -27,7 +27,7 @@ class TriageScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const WorksheetCropPlaceholder(label: 'worksheet photo', height: 118),
+                  const WorksheetPhotoBox(label: 'worksheet photo', height: 118),
                   const SizedBox(height: 14),
                   Text(draft.worksheetTitle, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 2),

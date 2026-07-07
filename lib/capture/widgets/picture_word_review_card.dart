@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/enums.dart';
 import '../models.dart';
-import 'worksheet_crop_placeholder.dart';
+import 'worksheet_photo_box.dart';
 
 const _noKanji = '';
 
@@ -75,7 +75,7 @@ class _PictureWordReviewCardState extends State<PictureWordReviewCard> {
             backgroundColor: Color(0x26FF9800),
           ),
           const SizedBox(height: 14),
-          const WorksheetCropPlaceholder(label: 'drawing crop', height: 150),
+          const WorksheetPhotoBox(label: 'drawing crop', height: 150),
           const SizedBox(height: 6),
           Text(
             'Drawing from the worksheet — no text gloss',
