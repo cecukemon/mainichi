@@ -47,7 +47,10 @@ class _ReadingExerciseScreenState extends ConsumerState<ReadingExerciseScreen> {
       ),
       body: switch (session.phase) {
         ReadingPhase.loading => const _LoadingView(),
-        ReadingPhase.error => _ErrorView(message: session.errorMessage),
+        ReadingPhase.error => _ErrorView(
+            message: session.errorMessage,
+            hasCachedFallback: session.hasCachedFallback,
+          ),
         ReadingPhase.ready => _ConversationView(
             conversation: session.conversation!,
             seed: session.seed!,
@@ -86,9 +89,10 @@ class _LoadingView extends StatelessWidget {
 }
 
 class _ErrorView extends ConsumerWidget {
-  const _ErrorView({required this.message});
+  const _ErrorView({required this.message, required this.hasCachedFallback});
 
   final String message;
+  final bool hasCachedFallback;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -112,6 +116,14 @@ class _ErrorView extends ConsumerWidget {
                   ref.read(readingSessionProvider.notifier).loadNext(),
               child: const Text('Try again'),
             ),
+            if (hasCachedFallback) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () =>
+                    ref.read(readingSessionProvider.notifier).readCached(),
+                child: const Text('Reread an earlier one'),
+              ),
+            ],
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),

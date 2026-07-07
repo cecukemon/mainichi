@@ -8,6 +8,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta/meta.dart';
 
+import '../data/conversation_cache.dart';
 import '../data/seed_repository.dart';
 import '../generation/conversation_generator.dart';
 import '../generation/generation_client.dart';
@@ -18,6 +19,12 @@ import '../capture/capture_providers.dart' show databaseProvider;
 /// Derives from [databaseProvider]; tests override with a fixture source.
 final seedSourceProvider = Provider<SeedSource>(
   (ref) => DriftSeedSource(ref.watch(databaseProvider)),
+);
+
+/// The generated-content cache (features/generated-cache.md): written through
+/// on every valid generation, read by the error state's reread fallback.
+final conversationStoreProvider = Provider<ConversationStore>(
+  (ref) => DriftConversationStore(ref.watch(databaseProvider)),
 );
 
 /// Derives from [apiKeyStoreProvider], same pattern as
@@ -34,6 +41,7 @@ final readingSessionProvider = StateNotifierProvider.autoDispose<
   (ref) => ReadingSessionNotifier(
     ref.watch(seedSourceProvider),
     ref.watch(generationServiceProvider),
+    ref.watch(conversationStoreProvider),
   ),
 );
 
@@ -45,20 +53,27 @@ class ReadingSessionState {
       : phase = ReadingPhase.loading,
         conversation = null,
         seed = null,
-        errorMessage = '';
-  const ReadingSessionState.error(this.errorMessage)
+        errorMessage = '',
+        hasCachedFallback = false;
+  const ReadingSessionState.error(this.errorMessage,
+      {this.hasCachedFallback = false})
       : phase = ReadingPhase.error,
         conversation = null,
         seed = null;
   const ReadingSessionState.ready(
       GeneratedConversation this.conversation, GenerationSeed this.seed)
       : phase = ReadingPhase.ready,
-        errorMessage = '';
+        errorMessage = '',
+        hasCachedFallback = false;
 
   final ReadingPhase phase;
   final GeneratedConversation? conversation;
   final GenerationSeed? seed;
   final String errorMessage;
+
+  /// On error: whether the generated-content cache can serve a reread
+  /// instead (features/generated-cache.md) — drives the fallback action.
+  final bool hasCachedFallback;
 
   /// Slot forms the structure library actually teaches — what
   /// `detectTaughtForm` is allowed to recognize on a tapped word.
@@ -71,21 +86,21 @@ class ReadingSessionState {
 }
 
 class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
-  ReadingSessionNotifier(this._seeds, this._service)
+  ReadingSessionNotifier(this._seeds, this._service, this._cache)
       : super(const ReadingSessionState.loading()) {
     loadNext();
   }
 
   final SeedSource _seeds;
   final GenerationService _service;
+  final ConversationStore _cache;
 
   Future<void> loadNext() async {
     state = const ReadingSessionState.loading();
     try {
       final seed = await _seeds.loadGenerationSeed();
       if (seed.vocab.isEmpty || seed.structures.isEmpty) {
-        state = const ReadingSessionState.error(
-            'Nothing to read from yet — import a worksheet first.');
+        await _fail('Nothing to read from yet — import a worksheet first.');
         return;
       }
       final convo = await _service.generate(seed: seed);
@@ -93,25 +108,64 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
       if (!report.ok) {
         // Out-of-scope output is discarded, not shown (D20/D42) — the learner
         // must never see untaught material presented as practice.
-        state = const ReadingSessionState.error(
-            "The generator didn't return a conversation in scope. "
+        await _fail("The generator didn't return a conversation in scope. "
             'You can try again, or head back.');
         return;
       }
       if (!mounted) return;
       state = ReadingSessionState.ready(convo, seed);
+      await _persist(convo);
     } on ApiKeyMissing {
-      if (!mounted) return;
-      state = const ReadingSessionState.error(
-          'No API key configured — add one in Settings.');
+      await _fail('No API key configured — add one in Settings.');
     } on GenerationRefused {
-      if (!mounted) return;
-      state = const ReadingSessionState.error(
+      await _fail(
           'The generator declined that one. You can try again, or head back.');
     } catch (_) {
-      if (!mounted) return;
-      state = const ReadingSessionState.error(
+      await _fail(
           "Couldn't reach the generator. Check your connection and try again.");
     }
+  }
+
+  /// The error state's fallback action: serve the least-recently-practiced
+  /// cached conversation instead of generating (features/generated-cache.md).
+  Future<void> readCached() async {
+    state = const ReadingSessionState.loading();
+    try {
+      final seed = await _seeds.loadGenerationSeed();
+      final cached = await _cache.leastRecentlyPracticed();
+      if (cached == null) {
+        await _fail('Nothing cached yet — generate a conversation first.');
+        return;
+      }
+      await _cache.markPracticed(cached.id);
+      if (!mounted) return;
+      state = ReadingSessionState.ready(cached.conversation, seed);
+    } catch (_) {
+      await _fail("Couldn't load a cached conversation.");
+    }
+  }
+
+  /// Write-through into the generated-content cache. Link rows derive from
+  /// the validated conversation, not the model's used_* self-report. The
+  /// conversation is already validated and on screen — a persistence failure
+  /// is the cheaper loss, so it never interrupts reading.
+  Future<void> _persist(GeneratedConversation convo) async {
+    try {
+      await _cache.save(
+        convo,
+        wordIds: convo.tokenVocabIds,
+        structureIds: convo.lineStructureIds,
+      );
+    } catch (_) {/* cache-only loss, reading continues */}
+  }
+
+  Future<void> _fail(String message) async {
+    var canReread = false;
+    try {
+      canReread = await _cache.leastRecentlyPracticed() != null;
+    } catch (_) {/* no fallback offered if even the cache read fails */}
+    if (!mounted) return;
+    state =
+        ReadingSessionState.error(message, hasCachedFallback: canReread);
   }
 }

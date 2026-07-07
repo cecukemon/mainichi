@@ -117,6 +117,8 @@ class GenToken {
   final int vocabId;
 
   bool get isGlue => vocabId == 0;
+
+  Map<String, dynamic> toJson() => {'surface': surface, 'vocab_id': vocabId};
 }
 
 class GenLine {
@@ -132,6 +134,14 @@ class GenLine {
   final String text;
   final int structureId; // 0 = no matching structure
   final List<GenToken> tokens;
+
+  Map<String, dynamic> toJson() => {
+        'speaker_name_id': speakerNameId,
+        'speaker_surface': speakerSurface,
+        'text': text,
+        'structure_id': structureId,
+        'tokens': [for (final t in tokens) t.toJson()],
+      };
 }
 
 class GeneratedConversation {
@@ -143,6 +153,50 @@ class GeneratedConversation {
   final List<GenLine> lines;
   final List<int> usedVocabIds;
   final List<int> usedStructureIds;
+
+  /// The same shape as [generationSchema]'s output — one format for the wire
+  /// and the generated-content cache's `payloadJson` (spec §10.3).
+  factory GeneratedConversation.fromJson(Map<String, dynamic> j) =>
+      GeneratedConversation(
+        lines: (j['lines'] as List).map((l) {
+          final m = l as Map<String, dynamic>;
+          return GenLine(
+            speakerNameId: m['speaker_name_id'] as int,
+            speakerSurface: m['speaker_surface'] as String,
+            text: m['text'] as String,
+            structureId: m['structure_id'] as int,
+            tokens: (m['tokens'] as List).map((t) {
+              final tm = t as Map<String, dynamic>;
+              return GenToken(
+                surface: tm['surface'] as String,
+                vocabId: tm['vocab_id'] as int,
+              );
+            }).toList(),
+          );
+        }).toList(),
+        usedVocabIds: (j['used_vocab_ids'] as List).cast<int>(),
+        usedStructureIds: (j['used_structure_ids'] as List).cast<int>(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'lines': [for (final l in lines) l.toJson()],
+        'used_vocab_ids': usedVocabIds,
+        'used_structure_ids': usedStructureIds,
+      };
+
+  /// The vocab entries the conversation actually exercises — non-glue token
+  /// ids from the validated lines, not the model's `used_vocab_ids`
+  /// self-report. Feeds the cache's link rows.
+  Set<int> get tokenVocabIds => {
+        for (final line in lines)
+          for (final t in line.tokens)
+            if (!t.isGlue) t.vocabId,
+      };
+
+  /// Structures actually instantiated per line (0 = recombined, excluded) —
+  /// same authority rule as [tokenVocabIds].
+  Set<int> get lineStructureIds =>
+      {for (final l in lines) if (l.structureId != 0) l.structureId};
 }
 
 /// Thrown when the model declines the request (check before reading content).
@@ -317,26 +371,8 @@ GeneratedConversation parseGenerationResponse(Map<String, dynamic> response) {
       'no text block in response (stop_reason=${response['stop_reason']})',
     ),
   );
-  final j = jsonDecode(textBlock['text'] as String) as Map<String, dynamic>;
-  return GeneratedConversation(
-    lines: (j['lines'] as List).map((l) {
-      final m = l as Map<String, dynamic>;
-      return GenLine(
-        speakerNameId: m['speaker_name_id'] as int,
-        speakerSurface: m['speaker_surface'] as String,
-        text: m['text'] as String,
-        structureId: m['structure_id'] as int,
-        tokens: (m['tokens'] as List).map((t) {
-          final tm = t as Map<String, dynamic>;
-          return GenToken(
-            surface: tm['surface'] as String,
-            vocabId: tm['vocab_id'] as int,
-          );
-        }).toList(),
-      );
-    }).toList(),
-    usedVocabIds: (j['used_vocab_ids'] as List).cast<int>(),
-    usedStructureIds: (j['used_structure_ids'] as List).cast<int>(),
+  return GeneratedConversation.fromJson(
+    jsonDecode(textBlock['text'] as String) as Map<String, dynamic>,
   );
 }
 

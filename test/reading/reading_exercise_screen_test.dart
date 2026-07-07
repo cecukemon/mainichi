@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mainichi/data/conversation_cache.dart';
 import 'package:mainichi/data/seed_repository.dart';
 import 'package:mainichi/generation/conversation_generator.dart';
 import 'package:mainichi/generation/generation_client.dart';
@@ -87,10 +88,35 @@ class FakeGenerationService implements GenerationService {
   }
 }
 
+/// In-memory cache; conversations are practiced in insertion order for LRU.
+class FakeConversationStore implements ConversationStore {
+  final List<GeneratedConversation> saved = [];
+  final List<int> practiced = [];
+
+  @override
+  Future<int> save(
+    GeneratedConversation conversation, {
+    required Set<int> wordIds,
+    required Set<int> structureIds,
+  }) async {
+    saved.add(conversation);
+    return saved.length - 1;
+  }
+
+  @override
+  Future<CachedConversation?> leastRecentlyPracticed() async => saved.isEmpty
+      ? null
+      : CachedConversation(id: 0, conversation: saved.first);
+
+  @override
+  Future<void> markPracticed(int id) async => practiced.add(id);
+}
+
 Future<FakeGenerationService> _pumpScreen(
   WidgetTester tester, {
   GenerationSeed seed = _seed,
   List<Object>? results,
+  FakeConversationStore? cache,
 }) async {
   final service = FakeGenerationService(results ?? [_conversation]);
   await tester.pumpWidget(
@@ -98,6 +124,8 @@ Future<FakeGenerationService> _pumpScreen(
       overrides: [
         seedSourceProvider.overrideWithValue(FakeSeedSource(seed)),
         generationServiceProvider.overrideWithValue(service),
+        conversationStoreProvider
+            .overrideWithValue(cache ?? FakeConversationStore()),
       ],
       child: const MaterialApp(home: ReadingExerciseScreen()),
     ),
@@ -241,6 +269,44 @@ void main() {
 
     expect(find.textContaining('in scope'), findsOneWidget);
     expect(find.text('ねこ'), findsNothing);
+  });
+
+  testWidgets('a valid conversation is written through to the cache',
+      (tester) async {
+    final cache = FakeConversationStore();
+    await _pumpScreen(tester, cache: cache);
+    await tester.pump();
+    await tester.pump();
+
+    expect(cache.saved, hasLength(1));
+    // Link data derives from validated tokens/lines, not the model's report.
+    expect(cache.saved.single.tokenVocabIds, {5, 21, 31});
+    expect(cache.saved.single.lineStructureIds, {1});
+  });
+
+  testWidgets('error state offers a reread when the cache has content',
+      (tester) async {
+    final cache = FakeConversationStore()..saved.add(_conversation);
+    await _pumpScreen(tester,
+        results: [GenerationRefused('declined')], cache: cache);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Reread an earlier one'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('べません'), findsOneWidget); // cached conversation shown
+    expect(cache.practiced, [0]); // lastPracticedAt rotated
+  });
+
+  testWidgets('no reread offer on an empty cache', (tester) async {
+    await _pumpScreen(tester, results: [GenerationRefused('declined')]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text("Couldn't generate that one"), findsOneWidget);
+    expect(find.text('Reread an earlier one'), findsNothing);
   });
 
   testWidgets('an empty Bunko explains itself without calling the API',
