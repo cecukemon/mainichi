@@ -38,6 +38,16 @@ enum WordRole {
         'name' => WordRole.name,
         _ => WordRole.other,
       };
+
+  /// The snake_case wire string, inverse of [fromExtraction]. The generation
+  /// engine (`SeedWord.role`) and the segmenter speak this format.
+  String get wire => switch (this) {
+        WordRole.iAdjective => 'i_adjective',
+        WordRole.naAdjective => 'na_adjective',
+        // `this.` because WordRole.name (the enum value) shadows Enum.name.
+        WordRole.questionWord => 'question_word',
+        _ => this.name,
+      };
 }
 
 /// Conjugation a slot expects. The vocabulary entry is always stored in
@@ -59,6 +69,12 @@ enum SlotForm {
         'past' => SlotForm.past,
         'te' => SlotForm.te,
         _ => SlotForm.dictionary,
+      };
+
+  /// The snake_case wire string, inverse of [fromExtraction].
+  String get wire => switch (this) {
+        SlotForm.politeNegative => 'polite_negative',
+        _ => name,
       };
 }
 

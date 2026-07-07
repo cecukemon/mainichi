@@ -106,4 +106,46 @@ void main() {
     expect(r.ok, isTrue);
     expect(r.segments!.first.wordId, 50); // ここ, not the greedy ここのほんだ
   });
+
+  group('detectTaughtForm (lookup sheet form annotation)', () {
+    const taberu = LexiconEntry(id: 31, kana: 'たべる', kanji: '食べる', role: 'verb');
+    const iku = LexiconEntry(id: 30, kana: 'いく', kanji: '行く', role: 'verb');
+    const nomu = LexiconEntry(id: 32, kana: 'のむ', role: 'verb');
+    const omoshiroi =
+        LexiconEntry(id: 40, kana: 'おもしろい', kanji: '面白い', role: 'i_adjective');
+    const hon = LexiconEntry(id: 4, kana: 'ほん', role: 'noun');
+
+    String? detect(String surface, LexiconEntry e, {Set<String> forms = _forms}) =>
+        detectTaughtForm(surface, entry: e, taughtForms: forms);
+
+    test('identifies taught verb forms across classes and scripts', () {
+      expect(detect('食べません', taberu), 'polite_negative');
+      expect(detect('たべます', taberu), 'polite'); // ichidan, kana surface
+      expect(detect('行きます', iku), 'polite'); // godan, kanji stem
+      expect(detect('のみました', nomu, forms: {..._forms, 'past'}), 'past');
+    });
+
+    test('identifies the i-adjective negative', () {
+      expect(detect('面白く', omoshiroi), 'negative');
+      expect(detect('おもしろく', omoshiroi), 'negative');
+    });
+
+    test('returns null for the base form itself (no annotation)', () {
+      expect(detect('食べる', taberu), isNull);
+      expect(detect('たべる', taberu), isNull);
+      expect(detect('ほん', hon), isNull);
+    });
+
+    test('returns null for untaught or unrecognizable surfaces', () {
+      expect(detect('食べて', taberu), isNull); // te-form not taught
+      expect(detect('のみました', nomu), isNull); // past not in taught set
+      expect(detect('たべませんでした', taberu), isNull); // untaught ending
+      expect(detect('ねこ', taberu), isNull); // wrong entry entirely
+    });
+
+    test('ignores punctuation the token carried along', () {
+      expect(detect('、食べません。', taberu), 'polite_negative');
+      expect(detect('。、', taberu), isNull); // pure punctuation
+    });
+  });
 }

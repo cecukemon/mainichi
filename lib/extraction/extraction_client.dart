@@ -11,17 +11,12 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../settings/api_key_store.dart' show ApiKeyMissing;
 import 'worksheet_extractor.dart';
 
-const String _endpoint = 'https://api.anthropic.com/v1/messages';
+export '../settings/api_key_store.dart' show ApiKeyMissing;
 
-/// Thrown when no API key is configured — distinct from [ExtractionRefused]
-/// (the model declined) and transport errors, so the UI can point the user at
-/// Settings specifically rather than showing a generic failure.
-class ApiKeyMissing implements Exception {
-  @override
-  String toString() => 'ApiKeyMissing: no Anthropic API key configured';
-}
+const String _endpoint = 'https://api.anthropic.com/v1/messages';
 
 abstract class ExtractionService {
   /// Sends [imageBytes] for extraction and returns the raw structured-output

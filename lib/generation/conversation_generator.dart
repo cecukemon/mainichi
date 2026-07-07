@@ -431,14 +431,17 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
     if (line.structureId != 0 && !structureIds.contains(line.structureId)) {
       violations.add('line $n: structure id ${line.structureId} is unknown');
     }
-    // Every per-token check below sees only what the model put in `tokens` —
-    // and the renderer builds the display from tokens too. If `text` and the
-    // token surfaces disagree, a word could sit in `text` unvalidated (or the
-    // learner could be shown something other than the line the model wrote).
-    // Whitespace is ignored: `text` separates words with spaces, tokens don't.
+    // Every per-token check below sees only what the model put in `tokens`.
+    // If `text` and the token surfaces disagree, a word could sit in `text`
+    // unvalidated. Whitespace is ignored (`text` separates words with spaces,
+    // tokens don't), and so is punctuation: the model sometimes omits 、 from
+    // tokens (observed live, session 9), the factoring check already covers
+    // every character of `text` including punctuation, and the reading screen
+    // renders punctuation from `text`, not tokens (D42) — so a punctuation
+    // mismatch is no longer a display or validation hole, just noise.
     final reconstructed =
-        _stripWhitespace(line.tokens.map((t) => t.surface).join());
-    if (reconstructed != _stripWhitespace(line.text)) {
+        _comparable(line.tokens.map((t) => t.surface).join());
+    if (reconstructed != _comparable(line.text)) {
       violations.add(
           'line $n: tokens do not reconstruct the line text — tokens spell '
           '"$reconstructed" but text is "${line.text}"');
@@ -529,9 +532,10 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
 
 bool _hasKanji(String s) => s.runes.any((r) => r >= 0x4E00 && r <= 0x9FFF);
 
-/// Covers the ASCII spaces and the ideographic space (U+3000) the model uses
-/// interchangeably between words.
-String _stripWhitespace(String s) => s.replaceAll(RegExp(r'[\s　]+'), '');
+/// Normalization for the text↔tokens compare: drops whitespace (ASCII and the
+/// ideographic space U+3000, used interchangeably between words) and
+/// punctuation (see the comment at the check for why that's safe).
+String _comparable(String s) => s.replaceAll(RegExp(r'[、。？！・\s　]+'), '');
 
 // ---------------------------------------------------------------------------
 // Display (validates that furigana round-trips from the store, not the model).

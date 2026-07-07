@@ -90,7 +90,8 @@ const Map<String, List<String>> _verbSuffixes = {
   'past': ['ました'],
 };
 
-Iterable<String> _conjugatedForms(LexiconEntry e, Set<String> taughtForms) sync* {
+Iterable<({String form, String surface})> _conjugatedForms(
+    LexiconEntry e, Set<String> taughtForms) sync* {
   final bases = [e.kana, if (e.kanji.isNotEmpty) e.kanji];
   if (e.role == 'verb') {
     for (final base in bases) {
@@ -105,7 +106,7 @@ Iterable<String> _conjugatedForms(LexiconEntry e, Set<String> taughtForms) sync*
         if (!taughtForms.contains(form)) continue;
         for (final connector in connectors) {
           for (final suffix in suffixes) {
-            yield '$stem$connector$suffix';
+            yield (form: form, surface: '$stem$connector$suffix');
           }
         }
       }
@@ -114,10 +115,36 @@ Iterable<String> _conjugatedForms(LexiconEntry e, Set<String> taughtForms) sync*
     // おもしろい → おもしろく (negation continues with glue ありません).
     for (final base in bases) {
       if (base.endsWith('い') && base.length >= 2) {
-        yield '${base.substring(0, base.length - 1)}く';
+        yield (form: 'negative', surface: '${base.substring(0, base.length - 1)}く');
       }
     }
   }
+}
+
+final RegExp _leadingPunct = RegExp(r'^[、。？！・\s　]+');
+final RegExp _trailingPunct = RegExp(r'[、。？！・\s　]+$');
+
+/// Identifies which taught form a conjugated [surface] of [entry] is —
+/// the slot-form wire value ('polite', 'polite_negative', ...) — or null
+/// when the surface is the base form itself or nothing taught matches.
+///
+/// This is the reading screen's source for the lookup sheet's form
+/// annotation: derived from the store's base forms and the taught-forms
+/// inventory, never from the model's self-report (spec §10.3 authority
+/// rule). Null degrades gracefully — the sheet simply shows no form line.
+String? detectTaughtForm(
+  String surface, {
+  required LexiconEntry entry,
+  required Set<String> taughtForms,
+}) {
+  final core = surface
+      .replaceFirst(_leadingPunct, '')
+      .replaceFirst(_trailingPunct, '');
+  if (core.isEmpty || core == entry.kana || core == entry.kanji) return null;
+  for (final c in _conjugatedForms(entry, taughtForms)) {
+    if (c.surface == core) return c.form;
+  }
+  return null;
 }
 
 final RegExp _punctuationRun = RegExp(r'^[、。？！・\s　]+');
@@ -141,8 +168,8 @@ SegmentationResult factorLine(
     for (final e in lexicon) ...[
       LineSegment(e.kana, SegmentKind.word, wordId: e.id),
       if (e.kanji.isNotEmpty) LineSegment(e.kanji, SegmentKind.word, wordId: e.id),
-      for (final form in _conjugatedForms(e, taughtForms))
-        LineSegment(form, SegmentKind.word, wordId: e.id),
+      for (final c in _conjugatedForms(e, taughtForms))
+        LineSegment(c.surface, SegmentKind.word, wordId: e.id),
     ],
   ]..sort((a, b) => b.surface.length.compareTo(a.surface.length));
 

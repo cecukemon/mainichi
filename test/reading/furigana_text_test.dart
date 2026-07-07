@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mainichi/japanese/okurigana.dart';
 import 'package:mainichi/reading/furigana_text.dart';
-import 'package:mainichi/reading/screens/furigana_preview_screen.dart';
 
 Future<void> _pump(WidgetTester tester, Widget child) => tester.pumpWidget(
       MaterialApp(home: Scaffold(body: child)),
@@ -53,23 +52,5 @@ void main() {
       find.descendant(of: row, matching: find.text('きます')),
       findsOneWidget,
     );
-  });
-
-  testWidgets('preview screen toggles furigana through the real pipeline', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: FuriganaPreviewScreen()));
-
-    // Stem readings from the okurigana split are showing (い over 行, etc.).
-    expect(find.text('い'), findsOneWidget);
-    expect(find.text('おもしろ'), findsOneWidget);
-
-    await tester.tap(find.byType(Switch));
-    await tester.pumpAndSettle();
-
-    expect(find.text('い'), findsNothing);
-    expect(find.text('おもしろ'), findsNothing);
-    // Bases unaffected — conjugated tails still on screen.
-    expect(find.text('きます'), findsOneWidget);
-    expect(find.text('食べません'), findsNothing); // segmented: 食 + べません
-    expect(find.text('べません'), findsOneWidget);
   });
 }

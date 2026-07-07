@@ -224,6 +224,23 @@ void main() {
       expect(report.ok, isTrue);
     });
 
+    test('reconstruction tolerates punctuation the tokens omit', () {
+      // Observed live (session 9): 、 in `text` but not in `tokens`. Safe to
+      // ignore since factoring covers all of `text` and the reading screen
+      // renders punctuation from `text` (D42) — a missing word still flags
+      // (previous test), a missing comma no longer does.
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'これ', vocabId: 1),
+          GenToken(surface: 'は', vocabId: 0),
+          GenToken(surface: 'ほん', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: 'これは、ほん です。'),
+        _seed,
+      );
+      expect(report.ok, isTrue);
+    });
+
     test('flags an unknown speaker name', () {
       final report = validateScope(
         _convo(const [

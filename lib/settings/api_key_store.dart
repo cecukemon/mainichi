@@ -15,6 +15,14 @@ abstract class ApiKeyStore {
   Future<void> clear();
 }
 
+/// Thrown by any live API service when no key is configured — distinct from a
+/// model refusal or a transport error, so the UI can point the user at
+/// Settings specifically rather than showing a generic failure.
+class ApiKeyMissing implements Exception {
+  @override
+  String toString() => 'ApiKeyMissing: no Anthropic API key configured';
+}
+
 const _apiKeyStorageKey = 'anthropic_api_key';
 
 /// Keychain-backed on iOS (Keystore on Android, for parity — this app is
