@@ -5,6 +5,10 @@ import 'package:mainichi/data/conversation_cache.dart';
 import 'package:mainichi/data/seed_repository.dart';
 import 'package:mainichi/generation/conversation_generator.dart';
 import 'package:mainichi/generation/generation_client.dart';
+import 'package:mainichi/listening/audio_store.dart';
+import 'package:mainichi/listening/line_audio.dart';
+import 'package:mainichi/listening/listening_providers.dart';
+import 'package:mainichi/listening/playback_controller.dart';
 import 'package:mainichi/reading/reading_providers.dart';
 import 'package:mainichi/reading/screens/reading_exercise_screen.dart';
 
@@ -110,6 +114,52 @@ class FakeConversationStore implements ConversationStore {
 
   @override
   Future<void> markPracticed(int id) async => practiced.add(id);
+
+  @override
+  Future<void> setAudioPath(int id, String path) async =>
+      audioPaths[id] = path;
+
+  final Map<int, String> audioPaths = {};
+}
+
+/// In-memory [AudioStore] — the real one touches the filesystem, which
+/// deadlocks under testWidgets' fake clock. Content-addressed caching is the
+/// real store's own tested concern (test/listening/audio_store_test.dart);
+/// here we only record what the screen asks for.
+class FakeAudioStore implements AudioStore {
+  final List<List<LineAudioSpec>> requests = [];
+  Object? error;
+
+  @override
+  Future<List<String>> ensureAudio({
+    required int conversationId,
+    required List<LineAudioSpec> lines,
+  }) async {
+    if (error != null) throw error!;
+    requests.add(lines);
+    return [for (var i = 0; i < lines.length; i++) 'conv_$conversationId/$i.mp3'];
+  }
+}
+
+class FakeLinePlayer implements LineAudioPlayer {
+  final List<String> played = [];
+  double? speed;
+  bool disposed = false;
+
+  @override
+  Future<bool> playFile(String path) async {
+    played.add(path);
+    return true;
+  }
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> setSpeed(double value) async => speed = value;
+
+  @override
+  Future<void> dispose() async => disposed = true;
 }
 
 Future<FakeGenerationService> _pumpScreen(
@@ -117,6 +167,8 @@ Future<FakeGenerationService> _pumpScreen(
   GenerationSeed seed = _seed,
   List<Object>? results,
   FakeConversationStore? cache,
+  FakeAudioStore? audio,
+  FakeLinePlayer? player,
 }) async {
   final service = FakeGenerationService(results ?? [_conversation]);
   await tester.pumpWidget(
@@ -126,6 +178,10 @@ Future<FakeGenerationService> _pumpScreen(
         generationServiceProvider.overrideWithValue(service),
         conversationStoreProvider
             .overrideWithValue(cache ?? FakeConversationStore()),
+        conversationAudioStoreProvider
+            .overrideWithValue(audio ?? FakeAudioStore()),
+        lineAudioPlayerFactoryProvider
+            .overrideWithValue(() => player ?? FakeLinePlayer()),
       ],
       child: const MaterialApp(home: ReadingExerciseScreen()),
     ),
@@ -307,6 +363,89 @@ void main() {
 
     expect(find.text("Couldn't generate that one"), findsOneWidget);
     expect(find.text('Reread an earlier one'), findsNothing);
+  });
+
+  testWidgets('audio bar renders with speed control; nothing plays unasked',
+      (tester) async {
+    final audio = FakeAudioStore();
+    await _pumpScreen(tester, audio: audio);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byTooltip('Play'), findsOneWidget);
+    expect(find.text('0.5×'), findsOneWidget);
+    expect(find.text('1×'), findsOneWidget);
+    expect(audio.requests, isEmpty); // lazy: nothing fetched before first play
+  });
+
+  testWidgets('play requests store-kana audio and plays the lines in order',
+      (tester) async {
+    final audio = FakeAudioStore();
+    final player = FakeLinePlayer();
+    await _pumpScreen(tester, audio: audio, player: player);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Play'));
+    await tester.pumpAndSettle();
+
+    // TTS input is the store's kana with punctuation from text, never kanji.
+    expect(audio.requests.single.map((s) => s.kana).toList(),
+        ['たなかは すしを たべますか。', 'いいえ、すしを たべません。']);
+    // Two speakers, two voices.
+    expect(audio.requests.single.map((s) => s.voice).toSet(), hasLength(2));
+    expect(player.played, ['conv_0/0.mp3', 'conv_0/1.mp3']);
+
+    // The margin affordance replays a single line.
+    await tester.tap(find.byTooltip('Play this line').last);
+    await tester.pumpAndSettle();
+    expect(player.played.last, 'conv_0/1.mp3');
+    expect(player.played, hasLength(3));
+  });
+
+  testWidgets('speed selection reaches the player', (tester) async {
+    final player = FakeLinePlayer();
+    await _pumpScreen(tester, player: player);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('0.5×'));
+    await tester.pumpAndSettle();
+    expect(player.speed, 0.5);
+  });
+
+  testWidgets('listening mode blurs the text and a tap reveals it',
+      (tester) async {
+    await _pumpScreen(tester);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Listening mode (hide text)'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ImageFiltered), findsOneWidget);
+    expect(find.textContaining('tap the text to reveal'), findsOneWidget);
+
+    // While blurred, tapping a word reveals the text instead of opening the
+    // lookup sheet — the check-what-you-heard gesture.
+    await tester.tap(find.text('すし').first, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('MEANING'), findsNothing);
+    expect(find.byType(ImageFiltered), findsNothing);
+    expect(find.text('Tap any word to look it up'), findsOneWidget);
+  });
+
+  testWidgets('a failed synthesis shows an inline audio error, text stays',
+      (tester) async {
+    final audio = FakeAudioStore()..error = Exception('boom');
+    await _pumpScreen(tester, audio: audio);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Play'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining("Couldn't fetch the audio"), findsOneWidget);
+    expect(find.text('べません'), findsOneWidget); // reading unaffected
   });
 
   testWidgets('an empty Bunko explains itself without calling the API',

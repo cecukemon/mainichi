@@ -1,6 +1,6 @@
-/// Settings screen: lets the user paste their Anthropic API key so live
-/// worksheet extraction / conversation generation can run in-app (see
-/// project-status.md Bugs: "iOS API key delivery is unaddressed").
+/// Settings screen: API key slots for the live services — Anthropic (worksheet
+/// extraction, conversation generation) and Google Cloud (TTS for the
+/// listening exercise, STT later). Both Keychain-backed via [ApiKeyStore].
 library;
 
 import 'package:flutter/material.dart';
@@ -8,17 +8,69 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../settings_providers.dart';
 
-class SettingsScreen extends ConsumerStatefulWidget {
+class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: const [
+          _KeySection(
+            title: 'Anthropic API key',
+            description:
+                'Used on-device to extract worksheets and generate practice. '
+                'Stored in the iOS Keychain, never sent anywhere but '
+                'api.anthropic.com.',
+            hint: 'sk-ant-...',
+            slot: _KeySlot.anthropic,
+          ),
+          SizedBox(height: 28),
+          _KeySection(
+            title: 'Google Cloud API key',
+            description:
+                'Used for listening audio (Text-to-Speech). Stored in the iOS '
+                'Keychain, never sent anywhere but texttospeech.googleapis.com.',
+            hint: 'AIza...',
+            slot: _KeySlot.google,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+enum _KeySlot { anthropic, google }
+
+class _KeySection extends ConsumerStatefulWidget {
+  const _KeySection({
+    required this.title,
+    required this.description,
+    required this.hint,
+    required this.slot,
+  });
+
+  final String title;
+  final String description;
+  final String hint;
+  final _KeySlot slot;
+
+  @override
+  ConsumerState<_KeySection> createState() => _KeySectionState();
+}
+
+class _KeySectionState extends ConsumerState<_KeySection> {
   final _controller = TextEditingController();
   bool _obscure = true;
   String? _error;
+
+  StateNotifierProvider<ApiKeyNotifier, ApiKeyState> get _provider =>
+      switch (widget.slot) {
+        _KeySlot.anthropic => apiKeyProvider,
+        _KeySlot.google => googleApiKeyProvider,
+      };
 
   @override
   void dispose() {
@@ -28,58 +80,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(apiKeyProvider);
+    final state = ref.watch(_provider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body: state.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('Anthropic API key', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Used on-device to extract worksheets and generate practice. '
-                    'Stored in the iOS Keychain, never sent anywhere but api.anthropic.com.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 20),
-                  if (state.hasKey) _KeySetCard(keyValue: state.key!) else _KeyEntryForm(
-                    controller: _controller,
-                    obscure: _obscure,
-                    error: _error,
-                    onToggleObscure: () => setState(() => _obscure = !_obscure),
-                  ),
-                  const SizedBox(height: 12),
-                  if (state.hasKey)
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        await ref.read(apiKeyProvider.notifier).clear();
-                      },
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Remove key'),
-                    )
-                  else
-                    FilledButton.icon(
-                      onPressed: () async {
-                        final value = _controller.text.trim();
-                        if (value.isEmpty) {
-                          setState(() => _error = 'Enter a key first.');
-                          return;
-                        }
-                        setState(() => _error = null);
-                        await ref.read(apiKeyProvider.notifier).save(value);
-                        _controller.clear();
-                      },
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Save key'),
-                    ),
-                ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(widget.description, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 20),
+        if (state.isLoading)
+          const Center(
+              child: Padding(
+            padding: EdgeInsets.all(8),
+            child: CircularProgressIndicator(),
+          ))
+        else if (state.hasKey)
+          _KeySetCard(keyValue: state.key!)
+        else
+          TextField(
+            controller: _controller,
+            obscureText: _obscure,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: 'API key',
+              hintText: widget.hint,
+              errorText: _error,
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(_obscure
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined),
+                onPressed: () => setState(() => _obscure = !_obscure),
               ),
             ),
+          ),
+        if (!state.isLoading) ...[
+          const SizedBox(height: 12),
+          if (state.hasKey)
+            OutlinedButton.icon(
+              onPressed: () async {
+                await ref.read(_provider.notifier).clear();
+              },
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Remove key'),
+            )
+          else
+            FilledButton.icon(
+              onPressed: () async {
+                final value = _controller.text.trim();
+                if (value.isEmpty) {
+                  setState(() => _error = 'Enter a key first.');
+                  return;
+                }
+                setState(() => _error = null);
+                await ref.read(_provider.notifier).save(value);
+                _controller.clear();
+              },
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Save key'),
+            ),
+        ],
+      ],
     );
   }
 }
@@ -112,46 +175,18 @@ class _KeySetCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Key saved', style: TextStyle(fontWeight: FontWeight.w500, color: Colors.green)),
-                Text(_masked, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.green)),
+                const Text('Key saved',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w500, color: Colors.green)),
+                Text(_masked,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.green)),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _KeyEntryForm extends StatelessWidget {
-  const _KeyEntryForm({
-    required this.controller,
-    required this.obscure,
-    required this.error,
-    required this.onToggleObscure,
-  });
-
-  final TextEditingController controller;
-  final bool obscure;
-  final String? error;
-  final VoidCallback onToggleObscure;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      obscureText: obscure,
-      autocorrect: false,
-      enableSuggestions: false,
-      decoration: InputDecoration(
-        labelText: 'API key',
-        hintText: 'sk-ant-...',
-        errorText: error,
-        border: const OutlineInputBorder(),
-        suffixIcon: IconButton(
-          icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-          onPressed: onToggleObscure,
-        ),
       ),
     );
   }

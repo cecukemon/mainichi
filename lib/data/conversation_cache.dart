@@ -36,6 +36,11 @@ abstract class ConversationStore {
   Future<CachedConversation?> leastRecentlyPracticed();
 
   Future<void> markPracticed(int id);
+
+  /// Records where this conversation's synthesized audio lives (the per-
+  /// conversation directory, features/listening-exercise.md). Set on first
+  /// successful synthesis.
+  Future<void> setAudioPath(int id, String path);
 }
 
 class DriftConversationStore implements ConversationStore {
@@ -98,6 +103,11 @@ class DriftConversationStore implements ConversationStore {
       ),
     );
   }
+
+  @override
+  Future<void> setAudioPath(int id, String path) =>
+      (_db.update(_db.generatedConversations)..where((c) => c.id.equals(id)))
+          .write(GeneratedConversationsCompanion(audioPath: Value(path)));
 
   @override
   Future<void> markPracticed(int id) =>

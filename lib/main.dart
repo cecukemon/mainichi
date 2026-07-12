@@ -17,7 +17,9 @@ void main() {
     ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(database),
-        apiKeyStoreProvider.overrideWithValue(SecureApiKeyStore()),
+        apiKeyStoreProvider.overrideWithValue(SecureApiKeyStore.anthropic()),
+        googleApiKeyStoreProvider
+            .overrideWithValue(SecureApiKeyStore.google()),
       ],
       child: const MainichiApp(),
     ),

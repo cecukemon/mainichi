@@ -6,14 +6,25 @@ import 'package:meta/meta.dart';
 
 import 'api_key_store.dart';
 
-/// Overridden at the app root with [SecureApiKeyStore], and in tests with an
-/// in-memory fake.
+/// Overridden at the app root with [SecureApiKeyStore.anthropic], and in
+/// tests with an in-memory fake.
 final apiKeyStoreProvider = Provider<ApiKeyStore>(
   (ref) => throw UnimplementedError('apiKeyStoreProvider must be overridden'),
 );
 
+/// The Google Cloud key slot (TTS today, STT later) — same override pattern
+/// as [apiKeyStoreProvider], backed by [SecureApiKeyStore.google].
+final googleApiKeyStoreProvider = Provider<ApiKeyStore>(
+  (ref) =>
+      throw UnimplementedError('googleApiKeyStoreProvider must be overridden'),
+);
+
 final apiKeyProvider = StateNotifierProvider<ApiKeyNotifier, ApiKeyState>(
   (ref) => ApiKeyNotifier(ref.watch(apiKeyStoreProvider)),
+);
+
+final googleApiKeyProvider = StateNotifierProvider<ApiKeyNotifier, ApiKeyState>(
+  (ref) => ApiKeyNotifier(ref.watch(googleApiKeyStoreProvider)),
 );
 
 @immutable

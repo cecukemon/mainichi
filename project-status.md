@@ -70,10 +70,12 @@ Feature doc: `features/reading-exercise.md` (flow, key decisions, mockups).
 - [done] lookup-sheet form annotation derived at render time (D44, 2026-07-07) — `detectTaughtForm` (`lib/japanese/segmenter.dart`) identifies a tapped surface's taught form from the segmenter's own conjugation inventory, store-authoritative per §10.3; `formAnnotation` (`lib/reading/form_label.dart`) maps wire values to the mockup's wording; null degrades to no form line, never wrong data
 - [done] generated-content cache — `features/generated-cache.md` (D49, 2026-07-07): invisible write-through of every valid conversation at the reading screen's ready state (payload verbatim, link rows from validated tokens/lines, `lastPracticedAt` on display), plus one visible affordance — the error state's "Reread an earlier one" fallback serving the least-recently-practiced cached conversation (`lib/data/conversation_cache.dart`, `ConversationStore`/`DriftConversationStore`). No browse UI, no caps, no cache-served Next — cached content re-enters the feed at phase 5's SRS selection. `audioPath` stays null until the listening exercise
 
-## 3. Listening exercise  [planned]
-- [planned] Google Cloud Text-to-Speech integration
-- [planned] audio cache (store synthesized audio on the conversation)
-- [planned] listening exercise screen
+## 3. Listening exercise  [in progress]
+Spec drafted (D50, 2026-07-07): `features/listening-exercise.md` — audio layer on the reading screen, not a separate screen.
+- [planned] `TtsService`/`LiveTtsService` (Google Cloud TTS via dio) + second API-key slot in settings (`ApiKeyStore` pattern)
+- [planned] kana line assembly for TTS input (store readings + punctuation from text)
+- [planned] audio file store — content-addressed per-line files, `audioPath` per-conversation directory, lazy synthesis on first play
+- [planned] playback UI on the reading screen — player row (play/pause, 0.5/0.75/1.0 client-side speed), per-line margin replay, blur listening mode
 
 ## 4. Speaking exercise  [planned]
 - [planned] mic capture (`record` package)

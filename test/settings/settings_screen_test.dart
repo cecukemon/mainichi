@@ -11,63 +11,91 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
-void main() {
-  testWidgets('shows entry form with no saved key, then the saved state after Save', (tester) async {
-    final store = FakeApiKeyStore();
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [apiKeyStoreProvider.overrideWithValue(store)],
-        child: const MaterialApp(home: SettingsScreen()),
-      ),
+/// Widgets inside the section headed by [title] — the screen now has one
+/// section per key slot (Anthropic, Google), structurally identical.
+Finder _inSection(String title, Finder finder) => find.descendant(
+      of: find.ancestor(of: find.text(title), matching: find.byType(Column)),
+      matching: finder,
     );
-    await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(TextField, 'API key'), findsOneWidget);
+const _anthropic = 'Anthropic API key';
+const _google = 'Google Cloud API key';
+
+Future<(FakeApiKeyStore, FakeApiKeyStore)> _pump(
+  WidgetTester tester, {
+  String? anthropicKey,
+  String? googleKey,
+}) async {
+  final anthropicStore = FakeApiKeyStore(anthropicKey);
+  final googleStore = FakeApiKeyStore(googleKey);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        apiKeyStoreProvider.overrideWithValue(anthropicStore),
+        googleApiKeyStoreProvider.overrideWithValue(googleStore),
+      ],
+      child: const MaterialApp(home: SettingsScreen()),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return (anthropicStore, googleStore);
+}
+
+void main() {
+  testWidgets(
+      'shows entry form with no saved key, then the saved state after Save',
+      (tester) async {
+    final (store, _) = await _pump(tester);
+
+    expect(_inSection(_anthropic, find.byType(TextField)), findsOneWidget);
     expect(find.text('Key saved'), findsNothing);
 
-    await tester.enterText(find.widgetWithText(TextField, 'API key'), 'sk-ant-mykey123');
-    await _tap(tester, find.widgetWithText(FilledButton, 'Save key'));
+    await tester.enterText(
+        _inSection(_anthropic, find.byType(TextField)), 'sk-ant-mykey123');
+    await _tap(tester, _inSection(_anthropic, find.text('Save key')));
 
     expect(find.text('Key saved'), findsOneWidget);
     expect(find.text('sk-a…y123'), findsOneWidget);
     expect(await store.read(), 'sk-ant-mykey123');
   });
 
-  testWidgets('shows an error instead of saving when the field is blank', (tester) async {
-    final store = FakeApiKeyStore();
+  testWidgets('shows an error instead of saving when the field is blank',
+      (tester) async {
+    final (store, _) = await _pump(tester);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [apiKeyStoreProvider.overrideWithValue(store)],
-        child: const MaterialApp(home: SettingsScreen()),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await _tap(tester, find.widgetWithText(FilledButton, 'Save key'));
+    await _tap(tester, _inSection(_anthropic, find.text('Save key')));
 
     expect(find.text('Enter a key first.'), findsOneWidget);
     expect(await store.read(), isNull);
   });
 
-  testWidgets('starts in the saved state and Remove clears it back to the entry form', (tester) async {
-    final store = FakeApiKeyStore('sk-ant-existingkey');
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [apiKeyStoreProvider.overrideWithValue(store)],
-        child: const MaterialApp(home: SettingsScreen()),
-      ),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+      'starts in the saved state and Remove clears it back to the entry form',
+      (tester) async {
+    final (store, _) = await _pump(tester, anthropicKey: 'sk-ant-existingkey');
 
     expect(find.text('Key saved'), findsOneWidget);
 
-    await _tap(tester, find.widgetWithText(OutlinedButton, 'Remove key'));
+    await _tap(tester, _inSection(_anthropic, find.text('Remove key')));
 
     expect(find.text('Key saved'), findsNothing);
-    expect(find.widgetWithText(TextField, 'API key'), findsOneWidget);
+    expect(_inSection(_anthropic, find.byType(TextField)), findsOneWidget);
     expect(await store.read(), isNull);
+  });
+
+  testWidgets('the Google slot saves independently of the Anthropic one',
+      (tester) async {
+    final (anthropicStore, googleStore) =
+        await _pump(tester, anthropicKey: 'sk-ant-existingkey');
+
+    expect(find.text('Key saved'), findsOneWidget); // Anthropic only
+
+    await tester.enterText(
+        _inSection(_google, find.byType(TextField)), 'AIza-google-key');
+    await _tap(tester, _inSection(_google, find.text('Save key')));
+
+    expect(find.text('Key saved'), findsNWidgets(2));
+    expect(await googleStore.read(), 'AIza-google-key');
+    expect(await anthropicStore.read(), 'sk-ant-existingkey');
   });
 }

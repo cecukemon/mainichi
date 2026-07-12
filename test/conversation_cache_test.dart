@@ -89,6 +89,18 @@ void main() {
     expect(await store.leastRecentlyPracticed(), isNull);
   });
 
+  test('setAudioPath records the audio directory on the row', () async {
+    final id =
+        await store.save(_convo('すしです。'), wordIds: {wordId}, structureIds: {});
+
+    await store.setAudioPath(id, '/docs/audio/conv_$id');
+
+    final row = await (db.select(db.generatedConversations)
+          ..where((c) => c.id.equals(id)))
+        .getSingle();
+    expect(row.audioPath, '/docs/audio/conv_$id');
+  });
+
   test('deleting a linked word cascades the link row, not the conversation',
       () async {
     final id =

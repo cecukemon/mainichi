@@ -19,34 +19,40 @@ abstract class ApiKeyStore {
 /// model refusal or a transport error, so the UI can point the user at
 /// Settings specifically rather than showing a generic failure.
 class ApiKeyMissing implements Exception {
-  @override
-  String toString() => 'ApiKeyMissing: no Anthropic API key configured';
-}
+  ApiKeyMissing([this.service = 'Anthropic']);
 
-const _apiKeyStorageKey = 'anthropic_api_key';
+  final String service;
+
+  @override
+  String toString() => 'ApiKeyMissing: no $service API key configured';
+}
 
 /// Keychain-backed on iOS (Keystore on Android, for parity — this app is
 /// iOS-only per CLAUDE.md, but `flutter_secure_storage` requires no extra
 /// setup to also work there). `first_unlock` accessibility keeps the key
 /// readable for background work after the device has been unlocked once,
 /// without requiring it to stay unlocked.
+///
+/// One instance per credential slot: [SecureApiKeyStore.anthropic] for the
+/// Claude calls, [SecureApiKeyStore.google] for Cloud TTS (and later STT).
 class SecureApiKeyStore implements ApiKeyStore {
-  SecureApiKeyStore()
-      : _storage = const FlutterSecureStorage(
-          iOptions: IOSOptions(
-            accessibility: KeychainAccessibility.first_unlock,
-          ),
-        );
+  SecureApiKeyStore.anthropic() : _storageKey = 'anthropic_api_key';
+  SecureApiKeyStore.google() : _storageKey = 'google_api_key';
 
-  final FlutterSecureStorage _storage;
+  final String _storageKey;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage(
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+    ),
+  );
 
   @override
-  Future<String?> read() => _storage.read(key: _apiKeyStorageKey);
+  Future<String?> read() => _storage.read(key: _storageKey);
 
   @override
   Future<void> write(String key) =>
-      _storage.write(key: _apiKeyStorageKey, value: key);
+      _storage.write(key: _storageKey, value: key);
 
   @override
-  Future<void> clear() => _storage.delete(key: _apiKeyStorageKey);
+  Future<void> clear() => _storage.delete(key: _storageKey);
 }

@@ -53,15 +53,18 @@ class ReadingSessionState {
       : phase = ReadingPhase.loading,
         conversation = null,
         seed = null,
+        conversationId = null,
         errorMessage = '',
         hasCachedFallback = false;
   const ReadingSessionState.error(this.errorMessage,
       {this.hasCachedFallback = false})
       : phase = ReadingPhase.error,
         conversation = null,
-        seed = null;
+        seed = null,
+        conversationId = null;
   const ReadingSessionState.ready(
-      GeneratedConversation this.conversation, GenerationSeed this.seed)
+      GeneratedConversation this.conversation, GenerationSeed this.seed,
+      {this.conversationId})
       : phase = ReadingPhase.ready,
         errorMessage = '',
         hasCachedFallback = false;
@@ -69,6 +72,12 @@ class ReadingSessionState {
   final ReadingPhase phase;
   final GeneratedConversation? conversation;
   final GenerationSeed? seed;
+
+  /// The conversation's row id in the generated-content cache — what the
+  /// audio layer keys its files on. Null only when the cache write failed
+  /// (the rare case: reading works, audio is unavailable).
+  final int? conversationId;
+
   final String errorMessage;
 
   /// On error: whether the generated-content cache can serve a reread
@@ -112,9 +121,12 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
             'You can try again, or head back.');
         return;
       }
+      // Persist before showing so the ready state can carry the cache row id
+      // the audio layer needs; a persistence failure still shows the
+      // conversation, just without audio (id stays null).
+      final id = await _persist(convo);
       if (!mounted) return;
-      state = ReadingSessionState.ready(convo, seed);
-      await _persist(convo);
+      state = ReadingSessionState.ready(convo, seed, conversationId: id);
     } on ApiKeyMissing {
       await _fail('No API key configured — add one in Settings.');
     } on GenerationRefused {
@@ -139,7 +151,8 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
       }
       await _cache.markPracticed(cached.id);
       if (!mounted) return;
-      state = ReadingSessionState.ready(cached.conversation, seed);
+      state = ReadingSessionState.ready(cached.conversation, seed,
+          conversationId: cached.id);
     } catch (_) {
       await _fail("Couldn't load a cached conversation.");
     }
@@ -147,16 +160,18 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
 
   /// Write-through into the generated-content cache. Link rows derive from
   /// the validated conversation, not the model's used_* self-report. The
-  /// conversation is already validated and on screen — a persistence failure
-  /// is the cheaper loss, so it never interrupts reading.
-  Future<void> _persist(GeneratedConversation convo) async {
+  /// conversation is already validated — a persistence failure is the cheaper
+  /// loss, so it never blocks reading (null: no cache row, no audio).
+  Future<int?> _persist(GeneratedConversation convo) async {
     try {
-      await _cache.save(
+      return await _cache.save(
         convo,
         wordIds: convo.tokenVocabIds,
         structureIds: convo.lineStructureIds,
       );
-    } catch (_) {/* cache-only loss, reading continues */}
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _fail(String message) async {
