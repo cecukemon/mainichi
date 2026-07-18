@@ -245,7 +245,12 @@ Map<String, dynamic> buildExtractionRequest({
   required String base64Image,
   String mediaType = 'image/jpeg',
   String model = ModelConfig.extraction,
-  int maxTokens = 8000,
+  // A dense worksheet's JSON draft can exceed 8000 output tokens, truncating
+  // the response mid-object (observed live 2026-07-18: FormatException at
+  // char 17506). 16000 covers a full worksheet while staying in the safe
+  // non-streaming range — the live client makes a single blocking `dio` POST,
+  // and larger caps risk HTTP timeouts without switching to streaming.
+  int maxTokens = 16000,
 }) {
   return {
     'model': model,
@@ -293,14 +298,31 @@ class ExtractionRefused implements Exception {
   String toString() => 'ExtractionRefused: $details';
 }
 
+/// Thrown when the model hit the `max_tokens` cap before finishing the JSON.
+/// The response carries a partial, unparseable text block; caught here so the
+/// user sees an actionable message instead of a raw `FormatException`.
+class ExtractionTruncated implements Exception {
+  ExtractionTruncated();
+  @override
+  String toString() =>
+      'ExtractionTruncated: the worksheet was too long to extract in one pass '
+      '(hit the output token limit)';
+}
+
 /// Parses a decoded Messages API response into the extraction draft.
 ///
-/// Checks `stop_reason` first (a refusal carries no usable content), then pulls
-/// the text block — skipping any leading thinking blocks — and decodes the
-/// schema-constrained JSON.
+/// Checks `stop_reason` first (a refusal carries no usable content, and a
+/// `max_tokens` stop carries only partial JSON), then pulls the text block —
+/// skipping any leading thinking blocks — and decodes the schema-constrained
+/// JSON.
 Map<String, dynamic> parseExtractionResponse(Map<String, dynamic> response) {
   if (response['stop_reason'] == 'refusal') {
     throw ExtractionRefused(response['stop_details']);
+  }
+  // A `max_tokens` stop means the JSON was cut off mid-object — decoding it
+  // would throw an opaque FormatException, so surface the real cause instead.
+  if (response['stop_reason'] == 'max_tokens') {
+    throw ExtractionTruncated();
   }
   final content = (response['content'] as List).cast<Map<String, dynamic>>();
   final textBlock = content.firstWhere(

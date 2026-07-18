@@ -95,6 +95,21 @@ void main() {
       );
     });
 
+    test('throws ExtractionTruncated on a max_tokens stop, before decoding '
+        'the partial JSON', () {
+      final response = {
+        'stop_reason': 'max_tokens',
+        // A real truncated response carries a partial, unparseable text block.
+        'content': [
+          {'type': 'text', 'text': '{"vocabulary":[{"kana":"ことし","kanji":'},
+        ],
+      };
+      expect(
+        () => parseExtractionResponse(response),
+        throwsA(isA<ExtractionTruncated>()),
+      );
+    });
+
     test('throws when there is no text block', () {
       final response = {
         'stop_reason': 'end_turn',

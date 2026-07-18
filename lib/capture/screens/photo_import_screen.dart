@@ -78,6 +78,12 @@ class _PhotoImportScreenState extends ConsumerState<PhotoImportScreen> {
         _status = _Status.error;
         _error = 'The model declined this image: ${e.details}';
       });
+    } on ExtractionTruncated {
+      setState(() {
+        _status = _Status.error;
+        _error = 'That worksheet was too long to read in one pass. '
+            'Try a photo of just part of it, or a less dense page.';
+      });
     } on Object catch (e) {
       setState(() {
         _status = _Status.error;
