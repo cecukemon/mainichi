@@ -398,7 +398,7 @@ GeneratedConversation parseGenerationResponse(Map<String, dynamic> response) {
 /// alongside Words/Structures rather than a hardcoded constant (open question
 /// in `project-status.md`).
 const Set<String> knownGrammarGlue = {
-  'は', 'を', 'に', 'か', // particles
+  'は', 'を', 'に', 'か', 'も', 'の', 'と', 'へ', 'や', // particles
   'です', 'では', 'ありません', // copula + negative copula
   'はい', 'いいえ', // yes/no
   'この', // adnominal "this" (distinct from the standalone pronoun これ)
