@@ -13,6 +13,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../capture/widgets/vocab_review_card.dart';
 import '../../generation/conversation_generator.dart';
 import '../../listening/line_audio.dart';
 import '../../listening/listening_providers.dart';
@@ -59,6 +60,7 @@ class _ReadingExerciseScreenState extends ConsumerState<ReadingExerciseScreen> {
         ReadingPhase.error => _ErrorView(
             message: session.errorMessage,
             hasCachedFallback: session.hasCachedFallback,
+            candidates: session.candidates,
           ),
         // Keyed per conversation so the audio controller and blur state
         // reset with each new one (identity fallback: id is null when the
@@ -104,10 +106,78 @@ class _LoadingView extends StatelessWidget {
 }
 
 class _ErrorView extends ConsumerWidget {
-  const _ErrorView({required this.message, required this.hasCachedFallback});
+  const _ErrorView({
+    required this.message,
+    required this.hasCachedFallback,
+    this.candidates = const [],
+  });
 
   final String message;
   final bool hasCachedFallback;
+
+  /// Word-shaped unmatched surfaces from the scope failure — the Bunko
+  /// backfill affordance (D52). Empty on non-scope errors.
+  final List<String> candidates;
+
+  /// The backfill review sheet: the capture flow's card, reframed for a word
+  /// with no worksheet behind it. Approve requires a meaning; discard is the
+  /// answer when the class never taught the word.
+  void _openBackfillSheet(BuildContext context, WidgetRef ref, String surface) {
+    final notifier = ref.read(readingSessionProvider.notifier);
+    final draft =
+        ref.read(scopeBackfillProvider).draftForSurface(surface);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        // Keep the card's fields above the keyboard.
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+        child: SizedBox(
+          height: MediaQuery.of(sheetContext).size.height * 0.75,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Did your class teach this?',
+                        style: Theme.of(sheetContext).textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Only add it if it appeared in class — otherwise discard.',
+                      style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(sheetContext)
+                              .colorScheme
+                              .onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: VocabReviewCard(
+                  item: draft,
+                  showWorksheetComparison: false,
+                  requireMeaning: true,
+                  onApprove: (edited) {
+                    Navigator.of(sheetContext).pop();
+                    notifier.addCandidateToBunko(edited, surface);
+                  },
+                  onSkip: () => Navigator.of(sheetContext).pop(),
+                  onDiscard: () {
+                    Navigator.of(sheetContext).pop();
+                    notifier.dismissCandidate(surface);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -125,6 +195,33 @@ class _ErrorView extends ConsumerWidget {
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            if (candidates.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Text('Missing from your Bunko?',
+                  style: theme.textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text(
+                'Add a word only if your class taught it.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final surface in candidates)
+                    ActionChip(
+                      avatar: const Icon(Icons.add, size: 18),
+                      label: Text(surface),
+                      onPressed: () =>
+                          _openBackfillSheet(context, ref, surface),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 24),
             FilledButton(
               onPressed: () =>

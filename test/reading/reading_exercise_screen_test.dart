@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mainichi/capture/commit_service.dart' show CommitResult;
+import 'package:mainichi/capture/models.dart';
 import 'package:mainichi/data/conversation_cache.dart';
+import 'package:mainichi/data/enums.dart';
 import 'package:mainichi/data/seed_repository.dart';
 import 'package:mainichi/generation/conversation_generator.dart';
 import 'package:mainichi/generation/generation_client.dart';
@@ -10,6 +13,7 @@ import 'package:mainichi/listening/line_audio.dart';
 import 'package:mainichi/listening/listening_providers.dart';
 import 'package:mainichi/listening/playback_controller.dart';
 import 'package:mainichi/reading/reading_providers.dart';
+import 'package:mainichi/reading/scope_backfill.dart';
 import 'package:mainichi/reading/screens/reading_exercise_screen.dart';
 
 const _seed = GenerationSeed(
@@ -64,11 +68,68 @@ final _conversation = GeneratedConversation(
   usedStructureIds: [1],
 );
 
+/// Out-of-scope against [_seed]: ねこ is untaught, glue-tagged (the model's
+/// usual laundering of an unknown word). Both the glue check and factoring
+/// reject it; ねこ is the word-shaped backfill candidate.
+final _leakyConversation = GeneratedConversation(
+  lines: const [
+    GenLine(
+      speakerNameId: 20,
+      speakerSurface: '鈴木',
+      text: 'ねこは すしを 食べます。',
+      structureId: 0,
+      tokens: [
+        GenToken(surface: 'ねこ', vocabId: 0),
+        GenToken(surface: 'は', vocabId: 0),
+        GenToken(surface: 'すし', vocabId: 5),
+        GenToken(surface: 'を', vocabId: 0),
+        GenToken(surface: '食べます', vocabId: 31),
+      ],
+    ),
+  ],
+  usedVocabIds: const [5, 31],
+  usedStructureIds: const [],
+);
+
 class FakeSeedSource implements SeedSource {
   FakeSeedSource(this.seed);
-  final GenerationSeed seed;
+
+  /// Mutable so a backfill test can enlarge the seed mid-flight, mimicking
+  /// the real store growing when a word is committed.
+  GenerationSeed seed;
   @override
   Future<GenerationSeed> loadGenerationSeed() async => seed;
+}
+
+/// Records commits; [onCommit] lets a test grow the fake seed the way a real
+/// commit grows the store. No db involved.
+class FakeScopeBackfillService implements ScopeBackfillService {
+  FakeScopeBackfillService({this.onCommit});
+  final void Function(VocabDraftItem approved, String surface)? onCommit;
+  final List<String> committedSurfaces = [];
+  Object? error;
+
+  @override
+  VocabDraftItem draftForSurface(String surface) => VocabDraftItem(
+        kana: surface,
+        kanji: '',
+        romaji: '',
+        meaning: '',
+        role: WordRole.other,
+        kanaOnly: false,
+        meaningSource: MeaningSource.none,
+        confidence: ConfidenceTier.low,
+      );
+
+  @override
+  Future<CommitResult> commit(VocabDraftItem approved,
+      {required String surface}) async {
+    if (error != null) throw error!;
+    committedSurfaces.add(surface);
+    onCommit?.call(approved, surface);
+    return const CommitResult(
+        newWordCount: 1, mergedCount: 0, newTemplateCount: 0, skipped: []);
+  }
 }
 
 class FakeGenerationService implements GenerationService {
@@ -165,16 +226,19 @@ class FakeLinePlayer implements LineAudioPlayer {
 Future<FakeGenerationService> _pumpScreen(
   WidgetTester tester, {
   GenerationSeed seed = _seed,
+  FakeSeedSource? seedSource,
   List<Object>? results,
   FakeConversationStore? cache,
   FakeAudioStore? audio,
   FakeLinePlayer? player,
+  FakeScopeBackfillService? backfill,
 }) async {
   final service = FakeGenerationService(results ?? [_conversation]);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        seedSourceProvider.overrideWithValue(FakeSeedSource(seed)),
+        seedSourceProvider
+            .overrideWithValue(seedSource ?? FakeSeedSource(seed)),
         generationServiceProvider.overrideWithValue(service),
         conversationStoreProvider
             .overrideWithValue(cache ?? FakeConversationStore()),
@@ -182,6 +246,8 @@ Future<FakeGenerationService> _pumpScreen(
             .overrideWithValue(audio ?? FakeAudioStore()),
         lineAudioPlayerFactoryProvider
             .overrideWithValue(() => player ?? FakeLinePlayer()),
+        scopeBackfillProvider
+            .overrideWithValue(backfill ?? FakeScopeBackfillService()),
       ],
       child: const MaterialApp(home: ReadingExerciseScreen()),
     ),
@@ -301,30 +367,174 @@ void main() {
   });
 
   testWidgets('out-of-scope output is discarded, never shown', (tester) async {
-    final leaky = GeneratedConversation(
+    await _pumpScreen(tester, results: [_leakyConversation]);
+    await tester.pump();
+
+    expect(find.textContaining('in scope'), findsOneWidget);
+    // The conversation itself is never rendered (no speaker margin, no line
+    // text) — the only place the untaught surface may appear is the backfill
+    // chip below.
+    expect(find.text('鈴木'), findsNothing);
+    expect(find.text('べます'), findsNothing);
+  });
+
+  testWidgets('scope failure offers the unmatched word as a backfill chip',
+      (tester) async {
+    await _pumpScreen(tester, results: [_leakyConversation]);
+    await tester.pump();
+
+    expect(find.text('Missing from your Bunko?'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'ねこ'), findsOneWidget);
+  });
+
+  testWidgets('non-scope errors show no backfill chips', (tester) async {
+    await _pumpScreen(tester, results: [GenerationRefused('declined')]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text("Couldn't generate that one"), findsOneWidget);
+    expect(find.text('Missing from your Bunko?'), findsNothing);
+    expect(find.byType(ActionChip), findsNothing);
+  });
+
+  testWidgets('backfill approve requires a meaning', (tester) async {
+    await _pumpScreen(tester, results: [_leakyConversation]);
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(ActionChip, 'ねこ'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Did your class teach this?'), findsOneWidget);
+    final approve = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Approve'));
+    expect(approve.onPressed, isNull); // disabled: meaning still empty
+
+    // TextFields in the sheet: kanji free-text (no candidates), then meaning.
+    await tester.enterText(find.byType(TextField).at(1), 'cat');
+    await tester.pump();
+    final enabled = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Approve'));
+    expect(enabled.onPressed, isNotNull);
+  });
+
+  testWidgets('approving a backfill word self-heals the rejected conversation',
+      (tester) async {
+    final seedSource = FakeSeedSource(_seed);
+    final backfill = FakeScopeBackfillService(
+      onCommit: (approved, surface) {
+        // A real commit grows the store; grow the fake seed the same way.
+        seedSource.seed = GenerationSeed(
+          vocab: [
+            ..._seed.vocab,
+            SeedWord(id: 99, kana: surface, role: 'noun', meaning: approved.meaning),
+          ],
+          structures: _seed.structures,
+        );
+      },
+    );
+    final cache = FakeConversationStore();
+    await _pumpScreen(tester,
+        seedSource: seedSource,
+        results: [_leakyConversation],
+        backfill: backfill,
+        cache: cache);
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(ActionChip, 'ねこ'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(1), 'cat');
+    await tester.pump();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Approve'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
+    await tester.pumpAndSettle();
+
+    expect(backfill.committedSurfaces, ['ねこ']);
+    // The previously rejected conversation now renders — the mislabeled-glue
+    // ねこ passes via the D53 relaxation, factoring covers it via the seed.
+    expect(find.text('ねこ'), findsOneWidget);
+    expect(find.text('べます'), findsOneWidget);
+    expect(cache.saved, [_leakyConversation]); // persisted like any valid one
+  });
+
+  testWidgets('backfill with remaining untaught material returns to the error',
+      (tester) async {
+    // Two untaught words; adding one still leaves the other.
+    final doubleLeaky = GeneratedConversation(
       lines: [
         GenLine(
           speakerNameId: 20,
           speakerSurface: '鈴木',
-          text: 'ねこは すしを 食べます。', // ねこ is untaught
+          text: 'ねこは いぬを 食べますか。',
           structureId: 0,
           tokens: const [
             GenToken(surface: 'ねこ', vocabId: 0),
             GenToken(surface: 'は', vocabId: 0),
-            GenToken(surface: 'すし', vocabId: 5),
+            GenToken(surface: 'いぬ', vocabId: 0),
             GenToken(surface: 'を', vocabId: 0),
             GenToken(surface: '食べます', vocabId: 31),
+            GenToken(surface: 'か', vocabId: 0),
           ],
         ),
       ],
-      usedVocabIds: const [5, 31],
+      usedVocabIds: const [31],
       usedStructureIds: const [],
     );
-    await _pumpScreen(tester, results: [leaky]);
+    final seedSource = FakeSeedSource(_seed);
+    final backfill = FakeScopeBackfillService(
+      onCommit: (approved, surface) {
+        seedSource.seed = GenerationSeed(
+          vocab: [
+            ..._seed.vocab,
+            SeedWord(id: 99, kana: surface, role: 'noun'),
+          ],
+          structures: _seed.structures,
+        );
+      },
+    );
+    await _pumpScreen(tester,
+        seedSource: seedSource, results: [doubleLeaky], backfill: backfill);
     await tester.pump();
 
-    expect(find.textContaining('in scope'), findsOneWidget);
-    expect(find.text('ねこ'), findsNothing);
+    expect(find.widgetWithText(ActionChip, 'ねこ'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'いぬ'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ActionChip, 'ねこ'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).at(1), 'cat');
+    await tester.pump();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Approve'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
+    await tester.pumpAndSettle();
+
+    // Progress, not success: distinct message, the added word's chip is gone,
+    // the remaining one stays actionable.
+    expect(find.textContaining('still uses other untaught material'),
+        findsOneWidget);
+    expect(find.widgetWithText(ActionChip, 'ねこ'), findsNothing);
+    expect(find.widgetWithText(ActionChip, 'いぬ'), findsOneWidget);
+  });
+
+  testWidgets('backfill discard removes the chip; skip keeps it',
+      (tester) async {
+    await _pumpScreen(tester, results: [_leakyConversation]);
+    await tester.pump();
+
+    // Skip: sheet closes, chip stays.
+    await tester.tap(find.widgetWithText(ActionChip, 'ねこ'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Skip'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Skip'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ActionChip, 'ねこ'), findsOneWidget);
+
+    // Discard: chip goes away, nothing committed.
+    await tester.tap(find.widgetWithText(ActionChip, 'ねこ'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Discard extraction'));
+    await tester.tap(find.text('Discard extraction'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ActionChip, 'ねこ'), findsNothing);
+    expect(find.text('Missing from your Bunko?'), findsNothing);
   });
 
   testWidgets('a valid conversation is written through to the cache',

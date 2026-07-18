@@ -16,7 +16,7 @@ Reading is the simplest exercise: render a generated conversation, let the learn
 
 **Step 1 — Entry.** A "Reading practice" action on the home screen. Replaces the temporary "Furigana preview (spike)" button (`FuriganaPreviewScreen`), which exists only to prove the rendering layout works.
 
-**Step 2 — Generate.** Tapping in immediately requests a new conversation, constrained to known vocabulary and structures (spec §2/§10.3) — no topic picker, no setup step. A loading state covers the wait. On refusal or a scope-validation failure, show a plain error state ("couldn't generate that one") with **Try again** and **Exit** — never silently retry forever.
+**Step 2 — Generate.** Tapping in immediately requests a new conversation, constrained to known vocabulary and structures (spec §2/§10.3) — no topic picker, no setup step. A loading state covers the wait. On refusal or a scope-validation failure, show a plain error state ("couldn't generate that one") with **Try again** and **Exit** — never silently retry forever. A scope failure additionally surfaces its word-shaped unmatched surfaces as backfill chips (§5); a cached earlier conversation is offered as a reread fallback when one exists (`features/generated-cache.md`).
 
 **Step 3 — Read.** The conversation renders script-style: each line's speaker name sits in a fixed left margin column, kanji with furigana to its right (toggle available, default on per §4, in the header). A vocab-linked token is underlined to show it's tappable; grammatical glue (は, です, か, particles) and punctuation are plain — there's nothing to define. Tapping an underlined word opens a bottom sheet with its reading (kana), a role chip (e.g. "verb"), and a meaning line that also carries its grammatical form when relevant ("to eat · negative, polite"); if the surface is a conjugated form (食べません), a separate "dictionary form" card shows the base form it conjugates from (食べる) with its own reading.
 
@@ -49,7 +49,21 @@ Reading is the simplest exercise: render a generated conversation, let the learn
 
 ---
 
-## 5. Status
+## 5. Scope-failure backfill (added 2026-07-18, D52/D53)
+
+Live failures kept naming words the class *did* teach but no worksheet ever captured (その, while この was allowlisted). Rather than hand-editing constants, the error state turns those failures into a capture surface — the direction the grammar-glue open question in `project-status.md` predicted ("folding allowlist maintenance into the capture flow is the natural fix").
+
+**Flow:** a scope failure lists its word-shaped unmatched surfaces as chips under "Missing from your Bunko?" (`ScopeReport.candidates`). Tapping one opens the capture flow's own `VocabReviewCard` in a bottom sheet, reframed: "Did your class teach this?", worksheet-comparison box hidden, Approve disabled until a meaning is entered. Approve commits through the normal capture commit (`ScopeBackfillService`, `lib/reading/scope_backfill.dart`) with reading-backfill provenance (null photo, generation model, `{"source": "reading-backfill"}` marker in `rawDraftJson` — no schema change, D52), then **re-validates the same rejected conversation against the fresh seed — if the added word was the only problem, it renders immediately** (the self-healing loop). Skip closes the sheet (chip stays); Discard removes the chip — the correct answer whenever the class didn't teach the word.
+
+**Key decisions:**
+- **Human confirmation is the Bunko's integrity rule, not worksheets per se.** The model nominates, the learner confirms — same contract as capture review. Guardrails against convenience bias (every approval makes an error disappear): one candidate at a time, no bulk approve, discard-friendly framing.
+- **Glue relaxation, kana-only (D53):** a glue-tagged token matching a taught word's kana passes validation (a mislabel, not a leak — factoring still verifies every character); required, or the backfilled word could never rescue the conversation that flagged it. Kanji surfaces stay violations (they'd render without furigana). Acceptances are logged under `reading.scope`.
+
+**Deferred:** single-character candidates (particles — wait for the glue-table promotion; they're silently filtered from chips today), kanji-bearing candidates (unknown reading; the card's kana entry is free-text rōmaji), and a merge UI for the role-variant near-duplicate case (same kana committed under a different role inserts a second row).
+
+---
+
+## 6. Status
 
 `[in progress]` — implemented (D47), pending the live end-to-end simulator run. Already in place and directly reusable: the generation call and scope validation (`lib/generation/conversation_generator.dart`), and the furigana rendering widgets (`lib/reading/furigana_text.dart`, `lib/japanese/okurigana.dart`) proven via the temporary `FuriganaPreviewScreen` spike (`lib/reading/screens/furigana_preview_screen.dart`), which this feature replaces outright once built. Claude Design has delivered pixel-level mockups for every state (home entry, loading, error, read screen furigana on/off, word-lookup sheet — saved alongside this doc) that match every decision in §3 and additionally settle the two former open questions about popover placement (it's a bottom sheet, not an inline popover) and visual detail (margin-column speaker names, role chip, form annotation on the meaning line).
 

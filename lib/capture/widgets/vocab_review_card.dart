@@ -18,12 +18,24 @@ class VocabReviewCard extends StatefulWidget {
     required this.onApprove,
     required this.onSkip,
     required this.onDiscard,
+    this.showWorksheetComparison = true,
+    this.requireMeaning = false,
   });
 
   final VocabDraftItem item;
   final void Function(VocabDraftItem edited) onApprove;
   final VoidCallback onSkip;
   final VoidCallback onDiscard;
+
+  /// Whether to show the source-crop comparison box. True in the capture
+  /// queue; false when the card reviews a word with no worksheet behind it
+  /// (the reading screen's Bunko backfill, D52).
+  final bool showWorksheetComparison;
+
+  /// When true, Approve is disabled until the meaning field is non-empty —
+  /// used by the backfill flow, where nothing pre-fills the meaning and a
+  /// blank one would degrade the lookup sheet.
+  final bool requireMeaning;
 
   @override
   State<VocabReviewCard> createState() => _VocabReviewCardState();
@@ -48,6 +60,10 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
     _kana = widget.item.kana;
     _kanaFreeText = TextEditingController(text: widget.item.kana);
     _meaning = TextEditingController(text: widget.item.meaning);
+    if (widget.requireMeaning) {
+      // Approve's enabled state tracks the field; rebuild on every edit.
+      _meaning.addListener(() => setState(() {}));
+    }
     _role = widget.item.role;
   }
 
@@ -90,12 +106,14 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
             ),
           ],
           const SizedBox(height: 12),
-          Text('Compare with the worksheet', style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 6),
-          WorksheetPhotoBox(
-            label: '${item.kanji.isNotEmpty ? item.kanji : item.kana} · source crop',
-          ),
-          const SizedBox(height: 16),
+          if (widget.showWorksheetComparison) ...[
+            Text('Compare with the worksheet', style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 6),
+            WorksheetPhotoBox(
+              label: '${item.kanji.isNotEmpty ? item.kanji : item.kana} · source crop',
+            ),
+            const SizedBox(height: 16),
+          ],
           Text('Kanji', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 6),
           if (item.kanjiCandidates.isNotEmpty) ...[
@@ -213,9 +231,11 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
-                  onPressed: () => widget.onApprove(
-                    item.copyWith(kanji: _kanji, kana: _kana, meaning: _meaning.text, role: _role),
-                  ),
+                  onPressed: widget.requireMeaning && _meaning.text.trim().isEmpty
+                      ? null
+                      : () => widget.onApprove(
+                            item.copyWith(kanji: _kanji, kana: _kana, meaning: _meaning.text, role: _role),
+                          ),
                   icon: const Icon(Icons.check),
                   label: const Text('Approve'),
                 ),

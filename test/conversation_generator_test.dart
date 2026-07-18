@@ -384,6 +384,119 @@ void main() {
     });
   });
 
+  group('backfill candidates + glue relaxation (D52/D53)', () {
+    test('an untaught glue-tagged word becomes a candidate, deduped across '
+        'the glue and factoring checks', () {
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'ねこ', vocabId: 0),
+          GenToken(surface: 'は', vocabId: 0),
+          GenToken(surface: 'ほん', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: 'ねこは ほん です'),
+        _seed,
+      );
+      expect(report.ok, isFalse);
+      expect(report.candidates, ['ねこ']);
+    });
+
+    test('a single-character glue violation yields no candidate (particles '
+        'defer to the glue table)', () {
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'これ', vocabId: 1),
+          GenToken(surface: 'が', vocabId: 0),
+          GenToken(surface: 'ほん', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: 'これが ほん です'),
+        _seed,
+      );
+      expect(report.ok, isFalse);
+      expect(report.candidates, isEmpty);
+    });
+
+    test('a kanji-bearing surface yields no candidate (reading unknown)', () {
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: '勉強', vocabId: 0),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: '勉強 です'),
+        _seed,
+      );
+      expect(report.ok, isFalse);
+      expect(report.candidates, isEmpty);
+    });
+
+    test('relaxation: a glue-tagged token matching taught kana passes (a '
+        'mislabeled word, not a scope leak)', () {
+      // これ is taught vocab (id 1) but the model tags it vocab_id 0. Every
+      // character is still covered by factoring; the label error alone must
+      // not reject the conversation (D53) — this is what lets a backfilled
+      // word rescue the conversation that flagged it.
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'これ', vocabId: 0),
+          GenToken(surface: 'は', vocabId: 0),
+          GenToken(surface: 'ほん', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ]),
+        _seed,
+      );
+      expect(report.violations, isEmpty);
+    });
+
+    test('relaxation is kana-only: a kanji surface stays rejected even when '
+        'it matches a taught word', () {
+      // 鈴木 is taught (すずき/鈴木), but the glue escape matches kana
+      // surfaces only — a kanji-surfaced glue token would render without
+      // furigana, so it stays a violation (D53).
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: '鈴木', vocabId: 0),
+          GenToken(surface: 'は', vocabId: 0),
+          GenToken(surface: 'ほん', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: '鈴木は ほん です'),
+        _seed,
+      );
+      expect(report.ok, isFalse);
+      expect(report.violations, anyElement(contains('鈴木')));
+    });
+
+    test('factoring failure cross-references the token list for a clean '
+        'candidate even when the glue check never fires', () {
+      // ねこ claims a *valid* vocab id (4, ほん) — the surface check flags it
+      // and factoring fails, but no glue violation exists. The candidate
+      // comes from matching the unmatched remainder against token surfaces.
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'ねこ', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: 'ねこ です'),
+        _seed,
+      );
+      expect(report.ok, isFalse);
+      expect(report.candidates, ['ねこ']);
+    });
+
+    test('factoring fallback trims the remainder at a glue boundary when '
+        'tokens and text disagree', () {
+      // ねこ sits in the text but not in the token list (the D24 hole), so
+      // no token surface matches the remainder — the fallback cuts 'ねこは'
+      // at the known-glue は.
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'は', vocabId: 0),
+          GenToken(surface: 'ほん', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: 'ねこは ほん です'),
+        _seed,
+      );
+      expect(report.ok, isFalse);
+      expect(report.candidates, ['ねこ']);
+    });
+  });
+
   test('renderConversation pulls furigana from the store, not the model', () {
     final out = renderConversation(
       _convo(const [

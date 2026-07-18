@@ -17,6 +17,8 @@ import '../generation/generation_client.dart';
 import '../settings/api_key_store.dart';
 import '../settings/settings_providers.dart';
 import '../capture/capture_providers.dart' show databaseProvider;
+import '../capture/models.dart' show VocabDraftItem;
+import 'scope_backfill.dart';
 
 /// Derives from [databaseProvider]; tests override with a fixture source.
 final seedSourceProvider = Provider<SeedSource>(
@@ -36,6 +38,13 @@ final generationServiceProvider = Provider<GenerationService>((ref) {
   return LiveGenerationService(apiKeyProvider: store.read);
 });
 
+/// The error state's Bunko-backfill path (D52) — injected as a service (not
+/// the raw db) so widget tests override it with a fake, same pattern as
+/// [generationServiceProvider].
+final scopeBackfillProvider = Provider<ScopeBackfillService>(
+  (ref) => ScopeBackfillService(ref.watch(databaseProvider)),
+);
+
 /// autoDispose: leaving the screen ends the session; re-entering starts a
 /// fresh one (no stale conversation flashing before the new load).
 final readingSessionProvider = StateNotifierProvider.autoDispose<
@@ -44,6 +53,7 @@ final readingSessionProvider = StateNotifierProvider.autoDispose<
     ref.watch(seedSourceProvider),
     ref.watch(generationServiceProvider),
     ref.watch(conversationStoreProvider),
+    ref.watch(scopeBackfillProvider),
   ),
 );
 
@@ -57,9 +67,13 @@ class ReadingSessionState {
         seed = null,
         conversationId = null,
         errorMessage = '',
-        hasCachedFallback = false;
+        hasCachedFallback = false,
+        rejectedConversation = null,
+        candidates = const [];
   const ReadingSessionState.error(this.errorMessage,
-      {this.hasCachedFallback = false})
+      {this.hasCachedFallback = false,
+      this.rejectedConversation,
+      this.candidates = const []})
       : phase = ReadingPhase.error,
         conversation = null,
         seed = null,
@@ -69,7 +83,9 @@ class ReadingSessionState {
       {this.conversationId})
       : phase = ReadingPhase.ready,
         errorMessage = '',
-        hasCachedFallback = false;
+        hasCachedFallback = false,
+        rejectedConversation = null,
+        candidates = const [];
 
   final ReadingPhase phase;
   final GeneratedConversation? conversation;
@@ -86,6 +102,16 @@ class ReadingSessionState {
   /// instead (features/generated-cache.md) — drives the fallback action.
   final bool hasCachedFallback;
 
+  /// On a scope-failure error: the rejected conversation, held (never shown)
+  /// so a Bunko backfill can re-validate it in place — the self-healing loop
+  /// (D52). Null on non-scope errors.
+  final GeneratedConversation? rejectedConversation;
+
+  /// On a scope-failure error: word-shaped unmatched surfaces the backfill
+  /// affordance offers for review ([ScopeReport.candidates]). Empty on
+  /// non-scope errors, so chips render only when there's something to add.
+  final List<String> candidates;
+
   /// Slot forms the structure library actually teaches — what
   /// `detectTaughtForm` is allowed to recognize on a tapped word.
   Set<String> get taughtForms => {
@@ -97,7 +123,7 @@ class ReadingSessionState {
 }
 
 class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
-  ReadingSessionNotifier(this._seeds, this._service, this._cache)
+  ReadingSessionNotifier(this._seeds, this._service, this._cache, this._backfill)
       : super(const ReadingSessionState.loading()) {
     loadNext();
   }
@@ -105,6 +131,7 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
   final SeedSource _seeds;
   final GenerationService _service;
   final ConversationStore _cache;
+  final ScopeBackfillService _backfill;
 
   Future<void> loadNext() async {
     state = const ReadingSessionState.loading();
@@ -127,8 +154,12 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
           '${report.violations.join('\n')}',
           name: 'reading.scope',
         );
-        await _fail("The generator didn't return a conversation in scope. "
-            'You can try again, or head back.');
+        await _fail(
+          "The generator didn't return a conversation in scope. "
+          'You can try again, or head back.',
+          rejectedConversation: convo,
+          candidates: report.candidates,
+        );
         return;
       }
       // Persist before showing so the ready state can carry the cache row id
@@ -184,13 +215,77 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
     }
   }
 
-  Future<void> _fail(String message) async {
+  /// The backfill affordance's commit path (D52): write the approved word
+  /// through the capture commit, then re-validate the rejected conversation
+  /// against a freshly loaded seed — if the added word was the only problem,
+  /// it now passes and is shown (the self-healing loop). Otherwise the error
+  /// state returns with recomputed candidates (the just-added word drops out;
+  /// any remaining ones show).
+  Future<void> addCandidateToBunko(
+      VocabDraftItem approved, String surface) async {
+    final rejected = state.rejectedConversation;
+    if (rejected == null) return; // phase changed under the sheet — no-op
+    state = const ReadingSessionState.loading();
+    try {
+      await _backfill.commit(approved, surface: surface);
+    } catch (_) {
+      await _fail("Couldn't save the word. You can try again, or head back.");
+      return;
+    }
+    try {
+      final seed = await _seeds.loadGenerationSeed();
+      final report = validateScope(rejected, seed);
+      if (report.ok) {
+        final id = await _persist(rejected);
+        if (!mounted) return;
+        state = ReadingSessionState.ready(rejected, seed, conversationId: id);
+      } else {
+        await _fail(
+          'Added — but this conversation still uses other untaught material. '
+          'You can add another word, try a fresh one, or head back.',
+          rejectedConversation: rejected,
+          candidates: report.candidates,
+        );
+      }
+    } catch (_) {
+      // The word is committed and stands (it's legitimately taught material
+      // regardless); only the re-validation failed.
+      await _fail(
+          'The word was added, but the conversation could not be re-checked. '
+          'You can try a fresh one, or head back.');
+    }
+  }
+
+  /// Discard from the backfill sheet: the chip disappears for this error
+  /// state, nothing is persisted (the user judged the word untaught).
+  void dismissCandidate(String surface) {
+    if (state.phase != ReadingPhase.error) return;
+    state = ReadingSessionState.error(
+      state.errorMessage,
+      hasCachedFallback: state.hasCachedFallback,
+      rejectedConversation: state.rejectedConversation,
+      candidates: [
+        for (final c in state.candidates)
+          if (c != surface) c,
+      ],
+    );
+  }
+
+  Future<void> _fail(
+    String message, {
+    GeneratedConversation? rejectedConversation,
+    List<String> candidates = const [],
+  }) async {
     var canReread = false;
     try {
       canReread = await _cache.leastRecentlyPracticed() != null;
     } catch (_) {/* no fallback offered if even the cache read fails */}
     if (!mounted) return;
-    state =
-        ReadingSessionState.error(message, hasCachedFallback: canReread);
+    state = ReadingSessionState.error(
+      message,
+      hasCachedFallback: canReread,
+      rejectedConversation: rejectedConversation,
+      candidates: candidates,
+    );
   }
 }

@@ -13,6 +13,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import '../config/model_config.dart';
 import '../japanese/okurigana.dart';
@@ -429,17 +430,31 @@ bool isKnownGlue(String surface) =>
 const Set<String> conjugatingRoles = {'verb', 'i_adjective', 'na_adjective'};
 
 class ScopeReport {
-  ScopeReport(this.violations);
+  ScopeReport(this.violations, {this.candidates = const []});
   final List<String> violations;
+
+  /// Word-shaped surfaces behind the violations that could plausibly be
+  /// taught-but-never-captured vocabulary — the reading screen's backfill
+  /// affordance offers these for review ("did your class teach this?").
+  /// v1 scope: multi-character, kana-only surfaces (single characters are
+  /// almost certainly particles, deferred to the glue-table promotion; a
+  /// kanji-bearing surface has an unknown reading the review card can't
+  /// safely capture yet). Unique, first-occurrence order.
+  final List<String> candidates;
   bool get ok => violations.isEmpty;
 }
 
 ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
   final violations = <String>[];
+  // Default {} literal is a LinkedHashSet — insertion (first-occurrence) order.
+  final candidates = <String>{};
   final vocabIds = seed.vocabIds;
   final structureIds = seed.structureIds;
   final nameIds = seed.nameIds;
   final byId = seed.vocabById;
+
+  // Taught kana surfaces, for the glue-mislabel escape below (D53).
+  final taughtKana = {for (final w in seed.vocab) w.kana};
 
   // Inputs for the factoring check (below): the closed lexicon, and the
   // conjugation forms the structure library actually teaches — a ます-form
@@ -495,6 +510,9 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
       violations.add(
           'line $n: text does not factor into taught material — unmatched '
           'from "${factoring.unmatchedFrom}"');
+      final candidate = _candidateFromFactoringFailure(
+          factoring.unmatchedFrom!, line.tokens);
+      if (candidate != null) candidates.add(candidate);
     }
     for (final tok in line.tokens) {
       if (tok.vocabId != 0 && !vocabIds.contains(tok.vocabId)) {
@@ -507,10 +525,26 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
       // and a kana-only invented word like an untaught honorific (さん),
       // which the old kanji-only check could not distinguish from real glue.
       if (tok.isGlue && !isKnownGlue(tok.surface)) {
-        violations.add(
-            'line $n: token "${tok.surface}" is tagged as glue (vocab_id 0) but '
-            'is not recognized grammar — likely an untaught word (e.g. a '
-            'particle, ending, or honorific) that slipped in');
+        if (taughtKana.contains(tok.surface)) {
+          // The surface IS a taught word's kana — the model merely mislabeled
+          // a real word as glue (a metadata error, not a scope leak): every
+          // character is still independently verified by the factoring check
+          // above (D53). Kana-only by construction (taught kana never carries
+          // kanji), so no furigana is lost. Logged so mislabeling frequency
+          // stays observable.
+          developer.log(
+            'line $n: glue-tagged token "${tok.surface}" matches taught kana '
+            '— accepting as mislabeled vocab (D53)',
+            name: 'reading.scope',
+          );
+        } else {
+          violations.add(
+              'line $n: token "${tok.surface}" is tagged as glue (vocab_id 0) but '
+              'is not recognized grammar — likely an untaught word (e.g. a '
+              'particle, ending, or honorific) that slipped in');
+          final candidate = _eligibleCandidate(tok.surface);
+          if (candidate != null) candidates.add(candidate);
+        }
       }
       // A content token must not surface kanji for a vocab entry whose
       // `kanji` field is empty — that's "not taught in kanji", whether
@@ -560,7 +594,43 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
       violations.add('used_structure_ids contains unknown id $id');
     }
   }
-  return ScopeReport(violations);
+  return ScopeReport(violations, candidates: candidates.toList());
+}
+
+/// Backfill eligibility (v1): multi-character, no kanji. Single characters
+/// are almost certainly particles (deferred to the glue-table promotion);
+/// kanji-bearing surfaces have an unknown reading the review card can't
+/// safely capture yet.
+String? _eligibleCandidate(String s) =>
+    s.runes.length > 1 && !_hasKanji(s) ? s : null;
+
+/// Extracts a word-shaped backfill candidate from a factoring failure.
+///
+/// [unmatchedFrom] is the raw un-factorable remainder of the line from the
+/// failure position — not trimmed to a word boundary. The model's own token
+/// list for the line gives a clean boundary: the token whose surface the
+/// remainder starts with is the offending word. Falls back to cutting the
+/// remainder at the first punctuation/whitespace/known-glue boundary when
+/// tokens and text disagree; yields null when nothing word-shaped remains.
+String? _candidateFromFactoringFailure(
+    String unmatchedFrom, List<GenToken> tokens) {
+  final rest = unmatchedFrom.replaceFirst(RegExp(r'^[、。？！・\s　]+'), '');
+  if (rest.isEmpty) return null;
+  for (final tok in tokens) {
+    if (tok.surface.isNotEmpty && rest.startsWith(tok.surface)) {
+      return _eligibleCandidate(tok.surface);
+    }
+  }
+  // Fallback: prefix up to the first punctuation/whitespace boundary...
+  var prefix = RegExp(r'^[^、。？！・\s　]+').firstMatch(rest)!.group(0)!;
+  // ...further cut at the earliest known-glue occurrence (a taught particle
+  // fused after the unknown word, e.g. "そのほんは" → "そのほん" — still not
+  // a clean word, but the glue is certainly not part of it).
+  for (final glue in knownGrammarGlue) {
+    final at = prefix.indexOf(glue);
+    if (at > 0) prefix = prefix.substring(0, at);
+  }
+  return _eligibleCandidate(prefix);
 }
 
 bool _hasKanji(String s) => s.runes.any((r) => r >= 0x4E00 && r <= 0x9FFF);
