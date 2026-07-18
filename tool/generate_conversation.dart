@@ -8,7 +8,7 @@
 ///   ANTHROPIC_API_KEY=$(cat ~/.config/anthropic/key) \
 ///     dart run tool/generate_conversation.dart [seed.json] [lineCount] [model] [focus]
 ///
-/// Defaults: tool/seed_demo.json, 6 lines, the module's generationModel, no focus.
+/// Defaults: tool/seed_demo.json, 6 lines, ModelConfig.generation, no focus.
 /// [focus] is an optional steer, e.g. "eating and drinking" — useful to exercise
 /// specific vocabulary/structures during validation rather than whatever the
 /// model reaches for by default.
@@ -17,6 +17,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:mainichi/config/model_config.dart';
 import 'package:mainichi/generation/conversation_generator.dart';
 
 const String _endpoint = 'https://api.anthropic.com/v1/messages';
@@ -24,7 +25,7 @@ const String _endpoint = 'https://api.anthropic.com/v1/messages';
 Future<void> main(List<String> args) async {
   final seedPath = args.isNotEmpty ? args[0] : 'tool/seed_demo.json';
   final lineCount = args.length > 1 ? int.parse(args[1]) : 6;
-  final model = args.length > 2 ? args[2] : generationModel;
+  final model = args.length > 2 ? args[2] : ModelConfig.generation;
   final focus = args.length > 3 ? args[3] : null;
 
   final apiKey = Platform.environment['ANTHROPIC_API_KEY'];

@@ -12,9 +12,7 @@ library;
 
 import 'dart:convert';
 
-/// Most capable model — accuracy matters and volume is low (spec §10.4).
-/// Model ids rotate; verify against https://docs.claude.com before shipping.
-const String extractionModel = 'claude-opus-4-8';
+import '../config/model_config.dart';
 
 /// Roles a vocabulary item or template slot can take. Closed set so generated
 /// sentences stay grammatical (spec §2). Extend as the course introduces more.
@@ -246,7 +244,7 @@ const String extractionUserPrompt =
 Map<String, dynamic> buildExtractionRequest({
   required String base64Image,
   String mediaType = 'image/jpeg',
-  String model = extractionModel,
+  String model = ModelConfig.extraction,
   int maxTokens = 8000,
 }) {
   return {

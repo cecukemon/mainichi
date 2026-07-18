@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../config/model_config.dart';
 import '../../extraction/extraction_client.dart';
 import '../../extraction/extraction_providers.dart';
 import '../../extraction/worksheet_extractor.dart';
@@ -60,7 +61,7 @@ class _PhotoImportScreenState extends ConsumerState<PhotoImportScreen> {
       final draft = draftFromExtraction(
         json,
         sourceImage: picked.path,
-        model: extractionModel,
+        model: ModelConfig.extraction,
       );
       await ref.read(captureQueueProvider.notifier).loadFromExtraction(draft);
       if (!mounted) return;

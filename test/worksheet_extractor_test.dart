@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mainichi/config/model_config.dart';
 import 'package:mainichi/data/enums.dart';
 import 'package:mainichi/extraction/worksheet_extractor.dart';
 
@@ -9,7 +10,7 @@ void main() {
     final req = buildExtractionRequest(base64Image: 'QUJD'); // "ABC"
 
     test('targets the extraction model with structured output', () {
-      expect(req['model'], extractionModel);
+      expect(req['model'], ModelConfig.extraction);
       final format = (req['output_config'] as Map)['format'] as Map;
       expect(format['type'], 'json_schema');
       expect(format['schema'], extractionSchema);

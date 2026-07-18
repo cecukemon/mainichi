@@ -14,12 +14,9 @@ library;
 
 import 'dart:convert';
 
+import '../config/model_config.dart';
 import '../japanese/okurigana.dart';
 import '../japanese/segmenter.dart';
-
-/// Fast mid-tier model for frequent, latency-sensitive generation (decision D3).
-/// Validate quality on `claude-opus-4-8` first, then confirm this holds.
-const String generationModel = 'claude-sonnet-4-6';
 
 // ---------------------------------------------------------------------------
 // Constraint inputs (the "what's been learned" set). Mirrors the DB shape but
@@ -327,7 +324,7 @@ String constraintContext(GenerationSeed seed) {
 Map<String, dynamic> buildGenerationRequest({
   required GenerationSeed seed,
   int lineCount = 6,
-  String model = generationModel,
+  String model = ModelConfig.generation,
   int maxTokens = 4000,
 
   /// Optional topic/vocabulary steer, e.g. "eating, drinking, and going
