@@ -184,6 +184,7 @@ class _SlotEditor extends StatelessWidget {
                 Expanded(
                   child: DropdownButtonFormField<WordRole>(
                     initialValue: slot.role,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Role', isDense: true, border: OutlineInputBorder()),
                     items: [for (final r in WordRole.values) DropdownMenuItem(value: r, child: Text(r.name))],
                     onChanged: (v) => onChanged(slot.copyWith(role: v)),
@@ -193,6 +194,7 @@ class _SlotEditor extends StatelessWidget {
                 Expanded(
                   child: DropdownButtonFormField<SlotForm>(
                     initialValue: slot.form,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Form', isDense: true, border: OutlineInputBorder()),
                     items: [for (final f in SlotForm.values) DropdownMenuItem(value: f, child: Text(f.name))],
                     onChanged: (v) => onChanged(slot.copyWith(form: v)),
@@ -206,6 +208,7 @@ class _SlotEditor extends StatelessWidget {
                 Expanded(
                   child: DropdownButtonFormField<WordRole>(
                     initialValue: slot.role,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Role', isDense: true, border: OutlineInputBorder()),
                     items: [for (final r in WordRole.values) DropdownMenuItem(value: r, child: Text(r.name))],
                     onChanged: (v) => onChanged(slot.copyWith(role: v)),
