@@ -232,6 +232,7 @@ Future<FakeGenerationService> _pumpScreen(
   FakeAudioStore? audio,
   FakeLinePlayer? player,
   FakeScopeBackfillService? backfill,
+  ReadingStart start = ReadingStart.generate,
 }) async {
   final service = FakeGenerationService(results ?? [_conversation]);
   await tester.pumpWidget(
@@ -249,7 +250,7 @@ Future<FakeGenerationService> _pumpScreen(
         scopeBackfillProvider
             .overrideWithValue(backfill ?? FakeScopeBackfillService()),
       ],
-      child: const MaterialApp(home: ReadingExerciseScreen()),
+      child: MaterialApp(home: ReadingExerciseScreen(start: start)),
     ),
   );
   return service;
@@ -573,6 +574,46 @@ void main() {
 
     expect(find.text("Couldn't generate that one"), findsOneWidget);
     expect(find.text('Reread an earlier one'), findsNothing);
+  });
+
+  testWidgets('reread entry serves a cached conversation without generating',
+      (tester) async {
+    final cache = FakeConversationStore()..saved.add(_conversation);
+    final service = await _pumpScreen(
+        tester, cache: cache, start: ReadingStart.reread);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('べません'), findsOneWidget); // cached conversation shown
+    expect(service.calls, 0); // reread never touches the generator
+    expect(cache.practiced, [0]); // lastPracticedAt rotated
+  });
+
+  testWidgets('reread Next rotates within the cache, never generating',
+      (tester) async {
+    final cache = FakeConversationStore()..saved.add(_conversation);
+    final service = await _pumpScreen(
+        tester, cache: cache, start: ReadingStart.reread);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.text('Next'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(service.calls, 0); // still no generation
+    expect(cache.practiced, [0, 0]); // rotated again
+  });
+
+  testWidgets('reread entry with an empty cache explains itself',
+      (tester) async {
+    final service =
+        await _pumpScreen(tester, start: ReadingStart.reread);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('Nothing cached yet'), findsOneWidget);
+    expect(service.calls, 0);
   });
 
   testWidgets('audio bar renders with speed control; nothing plays unasked',

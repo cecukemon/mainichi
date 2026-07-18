@@ -24,7 +24,11 @@ import '../reading_providers.dart';
 import '../word_lookup_sheet.dart';
 
 class ReadingExerciseScreen extends ConsumerStatefulWidget {
-  const ReadingExerciseScreen({super.key});
+  const ReadingExerciseScreen({super.key, this.start = ReadingStart.generate});
+
+  /// Whether the session opens by generating a fresh conversation or by
+  /// rereading a cached one — chosen at the home screen's two entrypoints.
+  final ReadingStart start;
 
   @override
   ConsumerState<ReadingExerciseScreen> createState() =>
@@ -36,7 +40,7 @@ class _ReadingExerciseScreenState extends ConsumerState<ReadingExerciseScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final session = ref.watch(readingSessionProvider);
+    final session = ref.watch(readingSessionProvider(widget.start));
 
     return Scaffold(
       appBar: AppBar(
@@ -58,6 +62,7 @@ class _ReadingExerciseScreenState extends ConsumerState<ReadingExerciseScreen> {
       body: switch (session.phase) {
         ReadingPhase.loading => const _LoadingView(),
         ReadingPhase.error => _ErrorView(
+            start: widget.start,
             message: session.errorMessage,
             hasCachedFallback: session.hasCachedFallback,
             candidates: session.candidates,
@@ -68,6 +73,7 @@ class _ReadingExerciseScreenState extends ConsumerState<ReadingExerciseScreen> {
         ReadingPhase.ready => _ConversationView(
             key: ValueKey(session.conversationId ??
                 identityHashCode(session.conversation)),
+            start: widget.start,
             conversation: session.conversation!,
             seed: session.seed!,
             conversationId: session.conversationId,
@@ -107,11 +113,13 @@ class _LoadingView extends StatelessWidget {
 
 class _ErrorView extends ConsumerWidget {
   const _ErrorView({
+    required this.start,
     required this.message,
     required this.hasCachedFallback,
     this.candidates = const [],
   });
 
+  final ReadingStart start;
   final String message;
   final bool hasCachedFallback;
 
@@ -123,7 +131,7 @@ class _ErrorView extends ConsumerWidget {
   /// with no worksheet behind it. Approve requires a meaning; discard is the
   /// answer when the class never taught the word.
   void _openBackfillSheet(BuildContext context, WidgetRef ref, String surface) {
-    final notifier = ref.read(readingSessionProvider.notifier);
+    final notifier = ref.read(readingSessionProvider(start).notifier);
     final draft =
         ref.read(scopeBackfillProvider).draftForSurface(surface);
     showModalBottomSheet<void>(
@@ -225,14 +233,15 @@ class _ErrorView extends ConsumerWidget {
             const SizedBox(height: 24),
             FilledButton(
               onPressed: () =>
-                  ref.read(readingSessionProvider.notifier).loadNext(),
+                  ref.read(readingSessionProvider(start).notifier).loadNext(),
               child: const Text('Try again'),
             ),
             if (hasCachedFallback) ...[
               const SizedBox(height: 8),
               OutlinedButton(
-                onPressed: () =>
-                    ref.read(readingSessionProvider.notifier).readCached(),
+                onPressed: () => ref
+                    .read(readingSessionProvider(start).notifier)
+                    .readCached(),
                 child: const Text('Reread an earlier one'),
               ),
             ],
@@ -251,6 +260,7 @@ class _ErrorView extends ConsumerWidget {
 class _ConversationView extends ConsumerStatefulWidget {
   const _ConversationView({
     super.key,
+    required this.start,
     required this.conversation,
     required this.seed,
     required this.conversationId,
@@ -258,6 +268,7 @@ class _ConversationView extends ConsumerStatefulWidget {
     required this.showFurigana,
   });
 
+  final ReadingStart start;
   final GeneratedConversation conversation;
   final GenerationSeed seed;
 
@@ -339,8 +350,19 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: () =>
-                        ref.read(readingSessionProvider.notifier).loadNext(),
+                    // In reread mode, Next stays in the cache (rotating to the
+                    // next least-recently-practiced one) rather than generating
+                    // — the whole point of that entrypoint.
+                    onPressed: () {
+                      final notifier =
+                          ref.read(readingSessionProvider(widget.start).notifier);
+                      switch (widget.start) {
+                        case ReadingStart.generate:
+                          notifier.loadNext();
+                        case ReadingStart.reread:
+                          notifier.readCached();
+                      }
+                    },
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [

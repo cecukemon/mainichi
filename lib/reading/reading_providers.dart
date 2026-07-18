@@ -45,15 +45,23 @@ final scopeBackfillProvider = Provider<ScopeBackfillService>(
   (ref) => ScopeBackfillService(ref.watch(databaseProvider)),
 );
 
+/// Which action the session runs on entry: generate a fresh conversation
+/// (D39, the default), or reread the least-recently-practiced cached one
+/// (features/generated-cache.md). The home screen offers both directly, so
+/// reread is no longer only reachable from the generation-failure fallback.
+enum ReadingStart { generate, reread }
+
 /// autoDispose: leaving the screen ends the session; re-entering starts a
-/// fresh one (no stale conversation flashing before the new load).
-final readingSessionProvider = StateNotifierProvider.autoDispose<
-    ReadingSessionNotifier, ReadingSessionState>(
-  (ref) => ReadingSessionNotifier(
+/// fresh one (no stale conversation flashing before the new load). Keyed on
+/// [ReadingStart] so the two home entrypoints get independent sessions.
+final readingSessionProvider = StateNotifierProvider.autoDispose.family<
+    ReadingSessionNotifier, ReadingSessionState, ReadingStart>(
+  (ref, start) => ReadingSessionNotifier(
     ref.watch(seedSourceProvider),
     ref.watch(generationServiceProvider),
     ref.watch(conversationStoreProvider),
     ref.watch(scopeBackfillProvider),
+    start: start,
   ),
 );
 
@@ -123,9 +131,15 @@ class ReadingSessionState {
 }
 
 class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
-  ReadingSessionNotifier(this._seeds, this._service, this._cache, this._backfill)
+  ReadingSessionNotifier(this._seeds, this._service, this._cache, this._backfill,
+      {ReadingStart start = ReadingStart.generate})
       : super(const ReadingSessionState.loading()) {
-    loadNext();
+    switch (start) {
+      case ReadingStart.generate:
+        loadNext();
+      case ReadingStart.reread:
+        readCached();
+    }
   }
 
   final SeedSource _seeds;
