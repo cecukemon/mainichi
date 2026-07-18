@@ -174,9 +174,14 @@ class _FieldRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: TextStyle(fontSize: 12, color: color.withValues(alpha: 0.75))),
-          Text(
-            matches ? '$left = $right' : '$left ≠ $right',
-            style: TextStyle(fontSize: 12, color: color),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              matches ? '$left = $right' : '$left ≠ $right',
+              style: TextStyle(fontSize: 12, color: color),
+              textAlign: TextAlign.right,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
