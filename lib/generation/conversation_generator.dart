@@ -415,7 +415,7 @@ const Set<String> knownGrammarGlue = {
 /// backtracking) tolerates that instability without weakening what's actually
 /// being checked: every character must still trace back to known grammar.
 final RegExp _glueFactoring = RegExp(
-  '^(?:${knownGrammarGlue.map(RegExp.escape).join('|')}|[、。？！・\\s])+\$',
+  '^(?:${knownGrammarGlue.map(RegExp.escape).join('|')}|[$punctuationChars])+\$',
 );
 
 /// Whether an ungrounded (vocab_id 0) token is safe to pass through as known
@@ -614,7 +614,8 @@ String? _eligibleCandidate(String s) =>
 /// tokens and text disagree; yields null when nothing word-shaped remains.
 String? _candidateFromFactoringFailure(
     String unmatchedFrom, List<GenToken> tokens) {
-  final rest = unmatchedFrom.replaceFirst(RegExp(r'^[、。？！・\s　]+'), '');
+  final rest =
+      unmatchedFrom.replaceFirst(RegExp('^[$punctuationChars]+'), '');
   if (rest.isEmpty) return null;
   for (final tok in tokens) {
     if (tok.surface.isNotEmpty && rest.startsWith(tok.surface)) {
@@ -622,7 +623,7 @@ String? _candidateFromFactoringFailure(
     }
   }
   // Fallback: prefix up to the first punctuation/whitespace boundary...
-  var prefix = RegExp(r'^[^、。？！・\s　]+').firstMatch(rest)!.group(0)!;
+  var prefix = RegExp('^[^$punctuationChars]+').firstMatch(rest)!.group(0)!;
   // ...further cut at the earliest known-glue occurrence (a taught particle
   // fused after the unknown word, e.g. "そのほんは" → "そのほん" — still not
   // a clean word, but the glue is certainly not part of it).
@@ -638,7 +639,8 @@ bool _hasKanji(String s) => s.runes.any((r) => r >= 0x4E00 && r <= 0x9FFF);
 /// Normalization for the text↔tokens compare: drops whitespace (ASCII and the
 /// ideographic space U+3000, used interchangeably between words) and
 /// punctuation (see the comment at the check for why that's safe).
-String _comparable(String s) => s.replaceAll(RegExp(r'[、。？！・\s　]+'), '');
+String _comparable(String s) =>
+    s.replaceAll(RegExp('[$punctuationChars]+'), '');
 
 // ---------------------------------------------------------------------------
 // Display (validates that furigana round-trips from the store, not the model).

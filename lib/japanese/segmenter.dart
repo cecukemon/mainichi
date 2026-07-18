@@ -121,8 +121,16 @@ Iterable<({String form, String surface})> _conjugatedForms(
   }
 }
 
-final RegExp _leadingPunct = RegExp(r'^[、。？！・\s　]+');
-final RegExp _trailingPunct = RegExp(r'[、。？！・\s　]+$');
+/// Characters treated as sentence punctuation everywhere scope validation and
+/// segmentation run. Both the full-width Japanese marks and their ASCII
+/// equivalents, since the model emits either (e.g. a line ending in `?` vs
+/// `？`, observed live 2026-07-19). Meant to be dropped into a regex character
+/// class as `[$punctuationChars]`; `\s` covers whitespace, `　` the ideographic
+/// space explicitly.
+const String punctuationChars = r'、。，．・…？！?!.,\s　';
+
+final RegExp _leadingPunct = RegExp('^[$punctuationChars]+');
+final RegExp _trailingPunct = RegExp('[$punctuationChars]+\$');
 
 /// Identifies which taught form a conjugated [surface] of [entry] is —
 /// the slot-form wire value ('polite', 'polite_negative', ...) — or null
@@ -147,7 +155,7 @@ String? detectTaughtForm(
   return null;
 }
 
-final RegExp _punctuationRun = RegExp(r'^[、。？！・\s　]+');
+final RegExp _punctuationRun = RegExp('^[$punctuationChars]+');
 
 /// Factors [text] into taught material, or reports where it got stuck.
 ///

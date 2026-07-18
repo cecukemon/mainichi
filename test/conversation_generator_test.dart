@@ -133,6 +133,28 @@ void main() {
       expect(report.ok, isTrue);
     });
 
+    test('an ASCII ? is treated as punctuation, not untaught material '
+        '(regression, 2026-07-19)', () {
+      // Live failure: the model ended a question with an ASCII "?" (U+003F)
+      // instead of the full-width "？", and both the reconstruction and
+      // factoring checks flagged it because their punctuation classes only
+      // listed the full-width marks.
+      final report = validateScope(
+        _convo(
+          const [
+            GenToken(surface: 'これ', vocabId: 1),
+            GenToken(surface: 'は', vocabId: 0),
+            GenToken(surface: 'ほん', vocabId: 4),
+            GenToken(surface: 'です', vocabId: 0),
+            GenToken(surface: 'か', vocabId: 0),
+          ],
+          text: 'これは ほん ですか?',
+        ),
+        _seed,
+      );
+      expect(report.violations, isEmpty);
+    });
+
     test('every glue token grounded in live generation runs passes', () {
       // Union observed across the copula/adjective/demonstrative/verb
       // validation runs (decision D20/D21) — a regression guard against
