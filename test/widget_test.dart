@@ -18,6 +18,6 @@ void main() {
       ),
     );
 
-    expect(find.text('New import'), findsOneWidget);
+    expect(find.text('New import from photo'), findsOneWidget);
   });
 }

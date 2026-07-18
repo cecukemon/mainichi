@@ -86,9 +86,11 @@ class CaptureQueueNotifier extends StateNotifier<CaptureQueueState> {
 
   final AppDatabase _db;
 
-  /// Loads the hand-written demo fixture (capture-loop.md §4) — the "New
-  /// import" button's flow. Seeds a demo Bunko entry first so the dedup-merge
-  /// card has something real to match against.
+  /// Loads the hand-written demo fixture (capture-loop.md §4), seeding a demo
+  /// Bunko entry first so the dedup-merge card has something real to match
+  /// against. Test/fixture only — deliberately not wired to any on-device
+  /// entry point, since `seedDemoBunko` would otherwise write demo data into
+  /// the user's real Bunko (see [loadFromExtraction]).
   Future<void> loadDemoFixture() async {
     await seedDemoBunko(_db);
     await _load(buildSampleDraft());

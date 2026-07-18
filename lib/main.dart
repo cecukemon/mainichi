@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'capture/capture_providers.dart';
 import 'capture/screens/photo_import_screen.dart';
-import 'capture/screens/triage_screen.dart';
 import 'data/connection.dart';
 import 'data/database.dart';
 import 'reading/screens/reading_exercise_screen.dart';
@@ -67,19 +66,6 @@ class HomeScreen extends ConsumerWidget {
               ),
               icon: const Icon(Icons.menu_book_outlined),
               label: const Text('Reading practice'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () {
-                // Fixture demo flow (capture-loop.md §4) — TriageScreen shows
-                // a spinner until this finishes loading.
-                ref.read(captureQueueProvider.notifier).loadDemoFixture();
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const TriageScreen()),
-                );
-              },
-              icon: const Icon(Icons.camera_alt_outlined),
-              label: const Text('New import'),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
