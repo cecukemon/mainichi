@@ -5,6 +5,8 @@
 /// explicit error state with retry — never a silent retry loop (D42).
 library;
 
+import 'dart:developer' as developer;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta/meta.dart';
 
@@ -116,7 +118,15 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
       final report = validateScope(convo, seed);
       if (!report.ok) {
         // Out-of-scope output is discarded, not shown (D20/D42) — the learner
-        // must never see untaught material presented as practice.
+        // must never see untaught material presented as practice. The learner
+        // gets a generic message, but the specific violations go to the dev
+        // log so the small-Bunko failure rate can be diagnosed (which check
+        // rejected, and on what token) rather than guessed at.
+        developer.log(
+          'generation rejected, ${report.violations.length} violation(s):\n'
+          '${report.violations.join('\n')}',
+          name: 'reading.scope',
+        );
         await _fail("The generator didn't return a conversation in scope. "
             'You can try again, or head back.');
         return;
