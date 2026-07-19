@@ -92,6 +92,29 @@ final _leakyConversation = GeneratedConversation(
   usedStructureIds: const [],
 );
 
+/// Out-of-scope against [_seed] over a single character: が is an untaught
+/// particle (glue-tagged, not in the seed glue), the D56 backfill case. The
+/// single-char candidate routes to the glue review sheet.
+final _particleLeakyConversation = GeneratedConversation(
+  lines: const [
+    GenLine(
+      speakerNameId: 20,
+      speakerSurface: '鈴木',
+      text: '田中が すしを 食べます。',
+      structureId: 0,
+      tokens: [
+        GenToken(surface: '田中', vocabId: 21),
+        GenToken(surface: 'が', vocabId: 0),
+        GenToken(surface: 'すし', vocabId: 5),
+        GenToken(surface: 'を', vocabId: 0),
+        GenToken(surface: '食べます', vocabId: 31),
+      ],
+    ),
+  ],
+  usedVocabIds: const [5, 21, 31],
+  usedStructureIds: const [],
+);
+
 class FakeSeedSource implements SeedSource {
   FakeSeedSource(this.seed);
 
@@ -105,9 +128,11 @@ class FakeSeedSource implements SeedSource {
 /// Records commits; [onCommit] lets a test grow the fake seed the way a real
 /// commit grows the store. No db involved.
 class FakeScopeBackfillService implements ScopeBackfillService {
-  FakeScopeBackfillService({this.onCommit});
+  FakeScopeBackfillService({this.onCommit, this.onCommitGlue});
   final void Function(VocabDraftItem approved, String surface)? onCommit;
+  final void Function(String surface, GlueKind kind)? onCommitGlue;
   final List<String> committedSurfaces = [];
+  final List<(String, GlueKind)> committedGlue = [];
   Object? error;
 
   @override
@@ -130,6 +155,14 @@ class FakeScopeBackfillService implements ScopeBackfillService {
     onCommit?.call(approved, surface);
     return const CommitResult(
         newWordCount: 1, mergedCount: 0, newTemplateCount: 0, skipped: []);
+  }
+
+  @override
+  Future<void> commitGlue(
+      {required String surface, required GlueKind kind}) async {
+    if (error != null) throw error!;
+    committedGlue.add((surface, kind));
+    onCommitGlue?.call(surface, kind);
   }
 }
 
@@ -599,6 +632,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.widgetWithText(ActionChip, 'ねこ'), findsNothing);
     expect(find.text('Missing from your Bunko?'), findsNothing);
+  });
+
+  testWidgets('a single-char chip opens the glue sheet; approving commits '
+      'glue and self-heals (D56)', (tester) async {
+    final seedSource = FakeSeedSource(_seed);
+    final backfill = FakeScopeBackfillService(
+      onCommitGlue: (surface, kind) {
+        // A real commit grows the glue table; grow the fake seed's glue.
+        seedSource.seed = GenerationSeed(
+          vocab: _seed.vocab,
+          structures: _seed.structures,
+          glue: {...seedGrammarGlue, surface},
+        );
+      },
+    );
+    final cache = FakeConversationStore();
+    await _pumpScreen(tester,
+        seedSource: seedSource,
+        results: [_particleLeakyConversation],
+        backfill: backfill,
+        cache: cache);
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(ActionChip, 'が'));
+    await tester.pumpAndSettle();
+    // The glue-flavored sheet, defaulting to particle — not the word card.
+    expect(find.text('What kind of grammar?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
+    await tester.pumpAndSettle();
+
+    expect(backfill.committedGlue, [('が', GlueKind.particle)]);
+    expect(backfill.committedSurfaces, isEmpty); // glue path, not the word one
+    // The previously rejected conversation now renders and is persisted.
+    expect(find.text('べます'), findsOneWidget);
+    expect(cache.saved, [_particleLeakyConversation]);
+  });
+
+  testWidgets('the glue sheet toggles to word mode, committing through the '
+      'word path instead', (tester) async {
+    final seedSource = FakeSeedSource(_seed);
+    final backfill = FakeScopeBackfillService(
+      onCommit: (approved, surface) {
+        seedSource.seed = GenerationSeed(
+          vocab: [
+            ..._seed.vocab,
+            SeedWord(id: 99, kana: surface, role: 'noun'),
+          ],
+          structures: _seed.structures,
+        );
+      },
+    );
+    await _pumpScreen(tester,
+        seedSource: seedSource,
+        results: [_particleLeakyConversation],
+        backfill: backfill);
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(ActionChip, 'が'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    // Word mode: the capture card with its meaning requirement.
+    expect(find.text('What kind of grammar?'), findsNothing);
+    await tester.enterText(find.byType(TextField).at(1), 'mosquito');
+    await tester.pump();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Approve'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Approve'));
+    await tester.pumpAndSettle();
+
+    expect(backfill.committedSurfaces, ['が']);
+    expect(backfill.committedGlue, isEmpty);
   });
 
   testWidgets('a valid conversation is written through to the cache',

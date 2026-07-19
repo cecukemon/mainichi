@@ -11,6 +11,8 @@ library;
 
 import 'dart:convert';
 
+import 'package:drift/drift.dart';
+
 import '../capture/commit_service.dart';
 import '../capture/models.dart';
 import '../config/model_config.dart';
@@ -21,6 +23,10 @@ import '../data/enums.dart';
 /// source-type column; the raw-material slot is the honest place — the
 /// generation model did propose the surface, D52).
 const String backfillSource = 'reading-backfill';
+
+/// Sibling marker for a grammar-glue backfill (D56) — same rawDraftJson slot,
+/// distinguishable from a word backfill when auditing Imports.
+const String glueBackfillSource = 'reading-backfill-glue';
 
 class ScopeBackfillService {
   ScopeBackfillService(this._db);
@@ -69,4 +75,35 @@ class ScopeBackfillService {
     );
     return runCommit(_db, draft);
   }
+
+  /// Commits an approved grammar-glue surface (D56): an Imports row for
+  /// provenance plus the GrammarGlue row linked to it, one transaction — the
+  /// glue analogue of [commit], but not through [runCommit], whose merge and
+  /// kanji-upgrade logic is word/structure-shaped. A surface already in the
+  /// table is a no-op (checked first, so no orphan Imports row is written).
+  Future<void> commitGlue({
+    required String surface,
+    required GlueKind kind,
+  }) =>
+      _db.transaction(() async {
+        final existing = await (_db.select(_db.grammarGlue)
+              ..where((g) => g.surface.equals(surface)))
+            .getSingleOrNull();
+        if (existing != null) return;
+        final importId = await _db.into(_db.imports).insert(
+              ImportsCompanion.insert(
+                model: Value(ModelConfig.generation),
+                rawDraftJson: Value(jsonEncode({
+                  'source': glueBackfillSource,
+                  'surface': surface,
+                  'kind': kind.name,
+                })),
+              ),
+            );
+        await _db.into(_db.grammarGlue).insert(GrammarGlueCompanion.insert(
+              surface: surface,
+              kind: kind,
+              importId: Value(importId),
+            ));
+      });
 }

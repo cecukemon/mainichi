@@ -15,7 +15,7 @@
 /// connectors are generated and accepted. That is deliberately slightly
 /// over-permissive (たべります would pass), but everything accepted is still
 /// composed purely of taught stems + taught endings — the check's actual
-/// guarantee. Same curation discipline as `knownGrammarGlue`: forms not
+/// guarantee. Same curation discipline as `seedGrammarGlue`: forms not
 /// mapped yet (te-form, plain negative — both irregular-prone) flag as
 /// unmatched when they first appear, which is the prompt to extend the map.
 library;
@@ -162,7 +162,8 @@ final RegExp _punctuationRun = RegExp('^[$punctuationChars]+');
 /// [taughtForms] is the set of slot-form wire values the structure library
 /// actually uses (`dictionary`, `polite`, ...) — a conjugation is only in
 /// scope once a taught pattern demands it. [glue] is the grammar allowlist
-/// (`knownGrammarGlue` for generation).
+/// (`GenerationSeed.glue` for generation — the GrammarGlue table when the
+/// seed came from the store, `seedGrammarGlue` otherwise).
 SegmentationResult factorLine(
   String text, {
   required List<LexiconEntry> lexicon,

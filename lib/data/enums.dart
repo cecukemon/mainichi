@@ -98,6 +98,13 @@ enum MeaningSource {
       };
 }
 
+/// Category of a grammar-glue entry (particles, copula forms, ... — the
+/// closed set scope validation trusts as taught grammar; see the GrammarGlue
+/// table). Categorization only — it does not affect validation, which treats
+/// all glue alike; it exists so the review sheet and future audits can tell a
+/// particle from a copula form.
+enum GlueKind { particle, copula, interjection, adnominal, other }
+
 /// Lifecycle of an imported word or structure. Extraction writes `draft`;
 /// passing review flips it to `approved`. Generation only ever draws from
 /// `approved` items, so an un-reviewed draft can never leak into practice.

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mainichi/data/glue_seed.dart';
 import 'package:mainichi/generation/conversation_generator.dart';
 
 const _seed = GenerationSeed(
@@ -37,6 +38,16 @@ GeneratedConversation _convo(List<GenToken> tokens,
     );
 
 void main() {
+  test('the table seed rows pin against the glue constant (D56)', () {
+    // glue_seed.dart (data layer) and seedGrammarGlue (generation layer)
+    // deliberately don't import each other; this test is what keeps them in
+    // sync.
+    expect(
+      grammarGlueSeedRows.map((r) => r.$1).toSet(),
+      seedGrammarGlue,
+    );
+  });
+
   group('buildGenerationRequest', () {
     final req = buildGenerationRequest(seed: _seed, lineCount: 5);
 
@@ -51,7 +62,20 @@ void main() {
       expect(system, hasLength(2));
       final ctx = system[1] as Map;
       expect(ctx['cache_control'], {'type': 'ephemeral'});
-      expect(ctx['text'], allOf(contains('VOCABULARY'), contains('STRUCTURES')));
+      expect(
+          ctx['text'],
+          allOf(contains('VOCABULARY'), contains('STRUCTURES'),
+              contains('GRAMMAR GLUE')));
+    });
+
+    test('grammar glue is listed sorted, byte-stable across insertion orders '
+        '(the cache breakpoint sits on this text, D56)', () {
+      GenerationSeed withGlue(Set<String> glue) =>
+          GenerationSeed(vocab: _seed.vocab, structures: _seed.structures, glue: glue);
+      final a = constraintContext(withGlue({'は', 'が', 'です'}));
+      final b = constraintContext(withGlue({'です', 'は', 'が'}));
+      expect(a, b);
+      expect(a.indexOf('"が"'), lessThan(a.indexOf('"です"')));
     });
 
     test('marks kana-only vocab explicitly in the context', () {
@@ -165,22 +189,26 @@ void main() {
         'はい', 'いいえ', 'この',
         '、', '。',
       ];
+      final matcher = GlueMatcher(seedGrammarGlue);
       for (final surface in grounded) {
-        expect(isKnownGlue(surface), isTrue, reason: '"$surface" should be known glue');
+        expect(matcher.isKnown(surface), isTrue,
+            reason: '"$surface" should be known glue');
       }
     });
 
     test(
         'tolerates the model fusing known pieces into one token '
         '(ではありません seen live as both 2 tokens and 1, decision D21)', () {
-      expect(isKnownGlue('ではありません'), isTrue);
-      expect(isKnownGlue('ですか'), isTrue); // です + か, also plausible to fuse
+      final matcher = GlueMatcher(seedGrammarGlue);
+      expect(matcher.isKnown('ではありません'), isTrue);
+      // です + か, also plausible to fuse
+      expect(matcher.isKnown('ですか'), isTrue);
     });
 
     test('still rejects an untaught word even when adjacent to known glue', () {
       // Guards against the factoring regex being so loose that appending a
       // known particle to an unknown word sneaks it through.
-      expect(isKnownGlue('さんは'), isFalse);
+      expect(GlueMatcher(seedGrammarGlue).isKnown('さんは'), isFalse);
     });
 
     test('rejects an untaught honorific tagged as glue (the さん bug, D20)', () {
@@ -422,8 +450,8 @@ void main() {
       expect(report.candidates, ['ねこ']);
     });
 
-    test('a single-character glue violation yields no candidate (particles '
-        'defer to the glue table)', () {
+    test('a single-character glue violation becomes a candidate (an untaught '
+        'particle, backfillable through the glue sheet since D56)', () {
       final report = validateScope(
         _convo(const [
           GenToken(surface: 'これ', vocabId: 1),
@@ -434,7 +462,45 @@ void main() {
         _seed,
       );
       expect(report.ok, isFalse);
-      expect(report.candidates, isEmpty);
+      expect(report.candidates, ['が']);
+    });
+
+    test('punctuation never becomes a candidate, even with single characters '
+        'now eligible', () {
+      // A glue-tagged 。 passes the matcher's punctuation branch — no
+      // violation, no chip — while the untaught single-char が on the same
+      // line still surfaces as one. Pins that dropping the length gate
+      // (D56) didn't open the door to punctuation chips.
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'これ', vocabId: 1),
+          GenToken(surface: 'が', vocabId: 0),
+          GenToken(surface: 'ほん', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+          GenToken(surface: '。', vocabId: 0),
+        ], text: 'これが ほん です。'),
+        _seed,
+      );
+      expect(report.ok, isFalse);
+      expect(report.candidates, ['が']);
+    });
+
+    test('a seed with widened glue accepts what the default seed rejects '
+        '(the table-backed allowlist, D56)', () {
+      final convo = _convo(const [
+        GenToken(surface: 'これ', vocabId: 1),
+        GenToken(surface: 'が', vocabId: 0),
+        GenToken(surface: 'ほん', vocabId: 4),
+        GenToken(surface: 'です', vocabId: 0),
+      ], text: 'これが ほん です');
+      expect(validateScope(convo, _seed).ok, isFalse);
+
+      final widened = GenerationSeed(
+        vocab: _seed.vocab,
+        structures: _seed.structures,
+        glue: {...seedGrammarGlue, 'が'},
+      );
+      expect(validateScope(convo, widened).ok, isTrue);
     });
 
     test('a kanji-bearing surface yields no candidate (reading unknown)', () {

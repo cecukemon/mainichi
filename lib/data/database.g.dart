@@ -3832,6 +3832,362 @@ class SrsCardsCompanion extends UpdateCompanion<SrsCard> {
   }
 }
 
+class $GrammarGlueTable extends GrammarGlue
+    with TableInfo<$GrammarGlueTable, GrammarGlueData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GrammarGlueTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _surfaceMeta = const VerificationMeta(
+    'surface',
+  );
+  @override
+  late final GeneratedColumn<String> surface = GeneratedColumn<String>(
+    'surface',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<GlueKind, String> kind =
+      GeneratedColumn<String>(
+        'kind',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<GlueKind>($GrammarGlueTable.$converterkind);
+  static const VerificationMeta _importIdMeta = const VerificationMeta(
+    'importId',
+  );
+  @override
+  late final GeneratedColumn<int> importId = GeneratedColumn<int>(
+    'import_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES imports (id) ON DELETE SET NULL',
+    ),
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, surface, kind, importId, addedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'grammar_glue';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GrammarGlueData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('surface')) {
+      context.handle(
+        _surfaceMeta,
+        surface.isAcceptableOrUnknown(data['surface']!, _surfaceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_surfaceMeta);
+    }
+    if (data.containsKey('import_id')) {
+      context.handle(
+        _importIdMeta,
+        importId.isAcceptableOrUnknown(data['import_id']!, _importIdMeta),
+      );
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  GrammarGlueData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GrammarGlueData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      surface: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}surface'],
+      )!,
+      kind: $GrammarGlueTable.$converterkind.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}kind'],
+        )!,
+      ),
+      importId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}import_id'],
+      ),
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}added_at'],
+      )!,
+    );
+  }
+
+  @override
+  $GrammarGlueTable createAlias(String alias) {
+    return $GrammarGlueTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<GlueKind, String, String> $converterkind =
+      const EnumNameConverter<GlueKind>(GlueKind.values);
+}
+
+class GrammarGlueData extends DataClass implements Insertable<GrammarGlueData> {
+  final int id;
+
+  /// The glue text exactly as it appears in generated lines (は, です, ...).
+  final String surface;
+  final GlueKind kind;
+  final int? importId;
+  final DateTime addedAt;
+  const GrammarGlueData({
+    required this.id,
+    required this.surface,
+    required this.kind,
+    this.importId,
+    required this.addedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['surface'] = Variable<String>(surface);
+    {
+      map['kind'] = Variable<String>(
+        $GrammarGlueTable.$converterkind.toSql(kind),
+      );
+    }
+    if (!nullToAbsent || importId != null) {
+      map['import_id'] = Variable<int>(importId);
+    }
+    map['added_at'] = Variable<DateTime>(addedAt);
+    return map;
+  }
+
+  GrammarGlueCompanion toCompanion(bool nullToAbsent) {
+    return GrammarGlueCompanion(
+      id: Value(id),
+      surface: Value(surface),
+      kind: Value(kind),
+      importId: importId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(importId),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory GrammarGlueData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GrammarGlueData(
+      id: serializer.fromJson<int>(json['id']),
+      surface: serializer.fromJson<String>(json['surface']),
+      kind: $GrammarGlueTable.$converterkind.fromJson(
+        serializer.fromJson<String>(json['kind']),
+      ),
+      importId: serializer.fromJson<int?>(json['importId']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'surface': serializer.toJson<String>(surface),
+      'kind': serializer.toJson<String>(
+        $GrammarGlueTable.$converterkind.toJson(kind),
+      ),
+      'importId': serializer.toJson<int?>(importId),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+    };
+  }
+
+  GrammarGlueData copyWith({
+    int? id,
+    String? surface,
+    GlueKind? kind,
+    Value<int?> importId = const Value.absent(),
+    DateTime? addedAt,
+  }) => GrammarGlueData(
+    id: id ?? this.id,
+    surface: surface ?? this.surface,
+    kind: kind ?? this.kind,
+    importId: importId.present ? importId.value : this.importId,
+    addedAt: addedAt ?? this.addedAt,
+  );
+  GrammarGlueData copyWithCompanion(GrammarGlueCompanion data) {
+    return GrammarGlueData(
+      id: data.id.present ? data.id.value : this.id,
+      surface: data.surface.present ? data.surface.value : this.surface,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      importId: data.importId.present ? data.importId.value : this.importId,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GrammarGlueData(')
+          ..write('id: $id, ')
+          ..write('surface: $surface, ')
+          ..write('kind: $kind, ')
+          ..write('importId: $importId, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, surface, kind, importId, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GrammarGlueData &&
+          other.id == this.id &&
+          other.surface == this.surface &&
+          other.kind == this.kind &&
+          other.importId == this.importId &&
+          other.addedAt == this.addedAt);
+}
+
+class GrammarGlueCompanion extends UpdateCompanion<GrammarGlueData> {
+  final Value<int> id;
+  final Value<String> surface;
+  final Value<GlueKind> kind;
+  final Value<int?> importId;
+  final Value<DateTime> addedAt;
+  const GrammarGlueCompanion({
+    this.id = const Value.absent(),
+    this.surface = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.importId = const Value.absent(),
+    this.addedAt = const Value.absent(),
+  });
+  GrammarGlueCompanion.insert({
+    this.id = const Value.absent(),
+    required String surface,
+    required GlueKind kind,
+    this.importId = const Value.absent(),
+    this.addedAt = const Value.absent(),
+  }) : surface = Value(surface),
+       kind = Value(kind);
+  static Insertable<GrammarGlueData> custom({
+    Expression<int>? id,
+    Expression<String>? surface,
+    Expression<String>? kind,
+    Expression<int>? importId,
+    Expression<DateTime>? addedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (surface != null) 'surface': surface,
+      if (kind != null) 'kind': kind,
+      if (importId != null) 'import_id': importId,
+      if (addedAt != null) 'added_at': addedAt,
+    });
+  }
+
+  GrammarGlueCompanion copyWith({
+    Value<int>? id,
+    Value<String>? surface,
+    Value<GlueKind>? kind,
+    Value<int?>? importId,
+    Value<DateTime>? addedAt,
+  }) {
+    return GrammarGlueCompanion(
+      id: id ?? this.id,
+      surface: surface ?? this.surface,
+      kind: kind ?? this.kind,
+      importId: importId ?? this.importId,
+      addedAt: addedAt ?? this.addedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (surface.present) {
+      map['surface'] = Variable<String>(surface.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(
+        $GrammarGlueTable.$converterkind.toSql(kind.value),
+      );
+    }
+    if (importId.present) {
+      map['import_id'] = Variable<int>(importId.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GrammarGlueCompanion(')
+          ..write('id: $id, ')
+          ..write('surface: $surface, ')
+          ..write('kind: $kind, ')
+          ..write('importId: $importId, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3849,6 +4205,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ConversationStructuresTable conversationStructures =
       $ConversationStructuresTable(this);
   late final $SrsCardsTable srsCards = $SrsCardsTable(this);
+  late final $GrammarGlueTable grammarGlue = $GrammarGlueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3863,6 +4220,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     conversationWords,
     conversationStructures,
     srsCards,
+    grammarGlue,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -3935,6 +4293,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('conversation_structures', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'imports',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('grammar_glue', kind: UpdateKind.update)],
     ),
   ]);
 }
@@ -4012,6 +4377,24 @@ final class $$ImportsTableReferences
     final cache = $_typedResult.readTableOrNull(
       _exampleSentencesRefsTable($_db),
     );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$GrammarGlueTable, List<GrammarGlueData>>
+  _grammarGlueRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.grammarGlue,
+    aliasName: 'imports__id__grammar_glue__import_id',
+  );
+
+  $$GrammarGlueTableProcessedTableManager get grammarGlueRefs {
+    final manager = $$GrammarGlueTableTableManager(
+      $_db,
+      $_db.grammarGlue,
+    ).filter((f) => f.importId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_grammarGlueRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -4118,6 +4501,31 @@ class $$ImportsTableFilterComposer
           }) => $$ExampleSentencesTableFilterComposer(
             $db: $db,
             $table: $db.exampleSentences,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> grammarGlueRefs(
+    Expression<bool> Function($$GrammarGlueTableFilterComposer f) f,
+  ) {
+    final $$GrammarGlueTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.grammarGlue,
+      getReferencedColumn: (t) => t.importId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GrammarGlueTableFilterComposer(
+            $db: $db,
+            $table: $db.grammarGlue,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -4267,6 +4675,31 @@ class $$ImportsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> grammarGlueRefs<T extends Object>(
+    Expression<T> Function($$GrammarGlueTableAnnotationComposer a) f,
+  ) {
+    final $$GrammarGlueTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.grammarGlue,
+      getReferencedColumn: (t) => t.importId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GrammarGlueTableAnnotationComposer(
+            $db: $db,
+            $table: $db.grammarGlue,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ImportsTableTableManager
@@ -4286,6 +4719,7 @@ class $$ImportsTableTableManager
             bool wordsRefs,
             bool structuresRefs,
             bool exampleSentencesRefs,
+            bool grammarGlueRefs,
           })
         > {
   $$ImportsTableTableManager(_$AppDatabase db, $ImportsTable table)
@@ -4340,6 +4774,7 @@ class $$ImportsTableTableManager
                 wordsRefs = false,
                 structuresRefs = false,
                 exampleSentencesRefs = false,
+                grammarGlueRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -4347,6 +4782,7 @@ class $$ImportsTableTableManager
                     if (wordsRefs) db.words,
                     if (structuresRefs) db.structures,
                     if (exampleSentencesRefs) db.exampleSentences,
+                    if (grammarGlueRefs) db.grammarGlue,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -4406,6 +4842,27 @@ class $$ImportsTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (grammarGlueRefs)
+                        await $_getPrefetchedData<
+                          Import,
+                          $ImportsTable,
+                          GrammarGlueData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ImportsTableReferences
+                              ._grammarGlueRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ImportsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).grammarGlueRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.importId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -4430,6 +4887,7 @@ typedef $$ImportsTableProcessedTableManager =
         bool wordsRefs,
         bool structuresRefs,
         bool exampleSentencesRefs,
+        bool grammarGlueRefs,
       })
     >;
 typedef $$WordsTableCreateCompanionBuilder =
@@ -8052,6 +8510,318 @@ typedef $$SrsCardsTableProcessedTableManager =
       SrsCard,
       PrefetchHooks Function()
     >;
+typedef $$GrammarGlueTableCreateCompanionBuilder =
+    GrammarGlueCompanion Function({
+      Value<int> id,
+      required String surface,
+      required GlueKind kind,
+      Value<int?> importId,
+      Value<DateTime> addedAt,
+    });
+typedef $$GrammarGlueTableUpdateCompanionBuilder =
+    GrammarGlueCompanion Function({
+      Value<int> id,
+      Value<String> surface,
+      Value<GlueKind> kind,
+      Value<int?> importId,
+      Value<DateTime> addedAt,
+    });
+
+final class $$GrammarGlueTableReferences
+    extends BaseReferences<_$AppDatabase, $GrammarGlueTable, GrammarGlueData> {
+  $$GrammarGlueTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ImportsTable _importIdTable(_$AppDatabase db) =>
+      db.imports.createAlias('grammar_glue__import_id__imports__id');
+
+  $$ImportsTableProcessedTableManager? get importId {
+    final $_column = $_itemColumn<int>('import_id');
+    if ($_column == null) return null;
+    final manager = $$ImportsTableTableManager(
+      $_db,
+      $_db.imports,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_importIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$GrammarGlueTableFilterComposer
+    extends Composer<_$AppDatabase, $GrammarGlueTable> {
+  $$GrammarGlueTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get surface => $composableBuilder(
+    column: $table.surface,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<GlueKind, GlueKind, String> get kind =>
+      $composableBuilder(
+        column: $table.kind,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ImportsTableFilterComposer get importId {
+    final $$ImportsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.importId,
+      referencedTable: $db.imports,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportsTableFilterComposer(
+            $db: $db,
+            $table: $db.imports,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$GrammarGlueTableOrderingComposer
+    extends Composer<_$AppDatabase, $GrammarGlueTable> {
+  $$GrammarGlueTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get surface => $composableBuilder(
+    column: $table.surface,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ImportsTableOrderingComposer get importId {
+    final $$ImportsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.importId,
+      referencedTable: $db.imports,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportsTableOrderingComposer(
+            $db: $db,
+            $table: $db.imports,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$GrammarGlueTableAnnotationComposer
+    extends Composer<_$AppDatabase, $GrammarGlueTable> {
+  $$GrammarGlueTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get surface =>
+      $composableBuilder(column: $table.surface, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<GlueKind, String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+
+  $$ImportsTableAnnotationComposer get importId {
+    final $$ImportsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.importId,
+      referencedTable: $db.imports,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ImportsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.imports,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$GrammarGlueTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $GrammarGlueTable,
+          GrammarGlueData,
+          $$GrammarGlueTableFilterComposer,
+          $$GrammarGlueTableOrderingComposer,
+          $$GrammarGlueTableAnnotationComposer,
+          $$GrammarGlueTableCreateCompanionBuilder,
+          $$GrammarGlueTableUpdateCompanionBuilder,
+          (GrammarGlueData, $$GrammarGlueTableReferences),
+          GrammarGlueData,
+          PrefetchHooks Function({bool importId})
+        > {
+  $$GrammarGlueTableTableManager(_$AppDatabase db, $GrammarGlueTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GrammarGlueTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$GrammarGlueTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$GrammarGlueTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> surface = const Value.absent(),
+                Value<GlueKind> kind = const Value.absent(),
+                Value<int?> importId = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+              }) => GrammarGlueCompanion(
+                id: id,
+                surface: surface,
+                kind: kind,
+                importId: importId,
+                addedAt: addedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String surface,
+                required GlueKind kind,
+                Value<int?> importId = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+              }) => GrammarGlueCompanion.insert(
+                id: id,
+                surface: surface,
+                kind: kind,
+                importId: importId,
+                addedAt: addedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$GrammarGlueTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({importId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (importId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.importId,
+                                referencedTable: $$GrammarGlueTableReferences
+                                    ._importIdTable(db),
+                                referencedColumn: $$GrammarGlueTableReferences
+                                    ._importIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$GrammarGlueTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $GrammarGlueTable,
+      GrammarGlueData,
+      $$GrammarGlueTableFilterComposer,
+      $$GrammarGlueTableOrderingComposer,
+      $$GrammarGlueTableAnnotationComposer,
+      $$GrammarGlueTableCreateCompanionBuilder,
+      $$GrammarGlueTableUpdateCompanionBuilder,
+      (GrammarGlueData, $$GrammarGlueTableReferences),
+      GrammarGlueData,
+      PrefetchHooks Function({bool importId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8080,4 +8850,6 @@ class $AppDatabaseManager {
       );
   $$SrsCardsTableTableManager get srsCards =>
       $$SrsCardsTableTableManager(_db, _db.srsCards);
+  $$GrammarGlueTableTableManager get grammarGlue =>
+      $$GrammarGlueTableTableManager(_db, _db.grammarGlue);
 }

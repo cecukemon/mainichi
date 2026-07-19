@@ -128,6 +128,29 @@ class ExampleSentences extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
+/// Grammatical "glue" the learner is assumed to know — the allowlist scope
+/// validation trusts for vocab-id-0 tokens (see `validateScope`). Promoted
+/// from the hardcoded `seedGrammarGlue` constant (decision D56) so new
+/// particles can be added through review instead of a code edit.
+///
+/// Presence in the table means approved — a row only gets here via the
+/// initial seed or the reading screen's backfill review sheet, so there is no
+/// separate status column. `importId == null` marks a seed-origin row;
+/// backfilled rows link to the Imports row that recorded their provenance.
+class GrammarGlue extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// The glue text exactly as it appears in generated lines (は, です, ...).
+  TextColumn get surface => text().unique()();
+
+  TextColumn get kind => textEnum<GlueKind>()();
+
+  IntColumn get importId =>
+      integer().nullable().references(Imports, #id, onDelete: KeyAction.setNull)();
+
+  DateTimeColumn get addedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 /// One worksheet-photo extraction run (§3). Keeps provenance for the review
 /// flow and stores the raw draft JSON so an import can be re-reviewed or
 /// debugged without re-calling the API.

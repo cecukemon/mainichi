@@ -81,9 +81,18 @@ class SeedStructure {
 }
 
 class GenerationSeed {
-  const GenerationSeed({required this.vocab, required this.structures});
+  const GenerationSeed({
+    required this.vocab,
+    required this.structures,
+    this.glue = seedGrammarGlue,
+  });
   final List<SeedWord> vocab;
   final List<SeedStructure> structures;
+
+  /// The grammar-glue allowlist scope validation trusts. Defaults to the
+  /// hand-curated seed constant; seeds loaded from the store carry the
+  /// GrammarGlue table instead (D56), which grows through review.
+  final Set<String> glue;
 
   factory GenerationSeed.fromJson(Map<String, dynamic> j) => GenerationSeed(
         vocab: (j['vocab'] as List)
@@ -92,6 +101,9 @@ class GenerationSeed {
         structures: (j['structures'] as List)
             .map((s) => SeedStructure.fromJson(s as Map<String, dynamic>))
             .toList(),
+        glue: j['glue'] == null
+            ? seedGrammarGlue
+            : (j['glue'] as List).cast<String>().toSet(),
       );
 
   Map<int, SeedWord> get vocabById => {for (final w in vocab) w.id: w};
@@ -278,8 +290,8 @@ You generate a short, natural Japanese practice conversation for a beginner lear
 Scope — the one hard rule:
 - Use ONLY content words from the VOCABULARY list. Never introduce a noun, adjective, verb, name, or kanji that is not in it. If a line needs a word you don't have, choose a different one.
 - A VOCABULARY entry marked "kana_only": true has NEVER been taught in kanji. Write it, and every conjugated form of it, entirely in kana — for example if たべる is kana_only, write たべます / たべません, never 食べます / 食べません. Only write kanji for a word whose entry actually has a "kanji" field (e.g. 鈴木 for すずき), and write exactly that kanji form, nothing else.
-- You MAY freely recombine the grammar the learner already knows — the particles (は, etc.), the copula です, the question marker か, and the patterns in STRUCTURES — into natural sentences, including combinations not written out as a literal STRUCTURE. Prefer the listed STRUCTURES, but a sentence built only from known vocabulary plus these known grammar pieces is in scope even when it is not a listed pattern.
-- Do NOT add honorifics, sentence-final particles, or any other word not in VOCABULARY (e.g. さん, ね, よ) — these have not necessarily been taught yet either, even though they seem minor.
+- You MAY freely recombine the grammar the learner already knows — the particles, copula forms, and other pieces in the GRAMMAR GLUE list (は, です, ...), and the patterns in STRUCTURES — into natural sentences, including combinations not written out as a literal STRUCTURE. Prefer the listed STRUCTURES, but a sentence built only from known vocabulary plus these known grammar pieces is in scope even when it is not a listed pattern.
+- Do NOT add honorifics, sentence-final particles, or any other word not in VOCABULARY or GRAMMAR GLUE (e.g. さん, ね, よ) — these have not necessarily been taught yet either, even though they seem minor.
 - Respect each slot's form: a slot with form "negative" takes the negated form (i-adjective おもしろい → おもしろく).
 
 Make it one coherent question-and-answer dialogue:
@@ -318,8 +330,14 @@ String constraintContext(GenerationSeed seed) {
                 .toList(),
           })
       .toList();
+  // Sorted so the block is byte-stable for a given glue set — the cache
+  // breakpoint sits on this text, and it should only miss when the taught
+  // material actually changed, not on set-iteration order (D56).
+  final glue = seed.glue.toList()..sort();
   const enc = JsonEncoder.withIndent('  ');
-  return 'VOCABULARY:\n${enc.convert(vocab)}\n\nSTRUCTURES:\n${enc.convert(structures)}';
+  return 'VOCABULARY:\n${enc.convert(vocab)}\n\n'
+      'STRUCTURES:\n${enc.convert(structures)}\n\n'
+      'GRAMMAR GLUE:\n${enc.convert(glue)}';
 }
 
 Map<String, dynamic> buildGenerationRequest({
@@ -392,19 +410,21 @@ GeneratedConversation parseGenerationResponse(Map<String, dynamic> response) {
 /// itself be real vocabulary (これ/それ/あれ/なん are literal, unslotted text
 /// in several structures), so "any substring of a template" is not a safe
 /// derivation. Grounded in what generation actually emitted across every
-/// structure in `tool/seed_demo.json` (verified live, decision D21). Extend
-/// this set by hand whenever a new structure introduces grammar not already
-/// listed — a future refinement is promoting this into a reviewable table
-/// alongside Words/Structures rather than a hardcoded constant (open question
-/// in `project-status.md`).
-const Set<String> knownGrammarGlue = {
+/// structure in `tool/seed_demo.json` (verified live, decision D21).
+///
+/// Since D56 this constant is no longer the live allowlist: the reviewable
+/// GrammarGlue table is (loaded into `GenerationSeed.glue` by the seed
+/// repository, extendable in-app through the reading screen's backfill
+/// sheet). It remains as the table's initial contents (`glue_seed.dart` pins
+/// against it) and as the const default for seeds built without a database.
+const Set<String> seedGrammarGlue = {
   'は', 'を', 'に', 'か', 'も', 'の', 'と', 'へ', 'や', // particles
   'です', 'では', 'ありません', // copula + negative copula
   'はい', 'いいえ', // yes/no
   'この', // adnominal "this" (distinct from the standalone pronoun これ)
 };
 
-/// Matches a whole surface built entirely out of known glue pieces and/or
+/// Recognizes surfaces built entirely out of a glue allowlist's pieces and/or
 /// punctuation, in any combination (e.g. では + ありません = ではありません).
 ///
 /// Live runs showed the model's tokenization granularity for these endings is
@@ -414,14 +434,24 @@ const Set<String> knownGrammarGlue = {
 /// Factoring the surface into known pieces (via regex alternation with
 /// backtracking) tolerates that instability without weakening what's actually
 /// being checked: every character must still trace back to known grammar.
-final RegExp _glueFactoring = RegExp(
-  '^(?:${knownGrammarGlue.map(RegExp.escape).join('|')}|[$punctuationChars])+\$',
-);
+///
+/// A class (built per `validateScope` call from `seed.glue`) rather than the
+/// former top-level regex, which was baked from the constant at load time and
+/// couldn't see table-backed glue.
+class GlueMatcher {
+  GlueMatcher(this.surfaces)
+      : _factoring = RegExp(
+          '^(?:${surfaces.map(RegExp.escape).join('|')}|[$punctuationChars])+\$',
+        );
 
-/// Whether an ungrounded (vocab_id 0) token is safe to pass through as known
-/// grammar, vs. something that slipped in unvetted.
-bool isKnownGlue(String surface) =>
-    surface.isNotEmpty && _glueFactoring.hasMatch(surface);
+  final Set<String> surfaces;
+  final RegExp _factoring;
+
+  /// Whether an ungrounded (vocab_id 0) token is safe to pass through as
+  /// known grammar, vs. something that slipped in unvetted.
+  bool isKnown(String surface) =>
+      surface.isNotEmpty && _factoring.hasMatch(surface);
+}
 
 /// Roles whose surface forms legitimately differ from the stored base form.
 /// Everything else (nouns, names, particles, ...) must match its entry
@@ -433,13 +463,14 @@ class ScopeReport {
   ScopeReport(this.violations, {this.candidates = const []});
   final List<String> violations;
 
-  /// Word-shaped surfaces behind the violations that could plausibly be
-  /// taught-but-never-captured vocabulary — the reading screen's backfill
+  /// Kana-only surfaces behind the violations that could plausibly be
+  /// taught-but-never-captured material — the reading screen's backfill
   /// affordance offers these for review ("did your class teach this?").
-  /// v1 scope: multi-character, kana-only surfaces (single characters are
-  /// almost certainly particles, deferred to the glue-table promotion; a
-  /// kanji-bearing surface has an unknown reading the review card can't
-  /// safely capture yet). Unique, first-occurrence order.
+  /// Multi-character surfaces are word-shaped; single characters (eligible
+  /// since D56) are almost certainly particles, which the reading screen
+  /// routes to the glue review sheet — the split is a UI decision, not
+  /// encoded here. Kanji-bearing surfaces stay excluded (unknown reading).
+  /// Unique, first-occurrence order.
   final List<String> candidates;
   bool get ok => violations.isEmpty;
 }
@@ -455,6 +486,10 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
 
   // Taught kana surfaces, for the glue-mislabel escape below (D53).
   final taughtKana = {for (final w in seed.vocab) w.kana};
+
+  // Glue factoring over the seed's allowlist (the GrammarGlue table when the
+  // seed came from the store, the seed constant otherwise — D56).
+  final glueMatcher = GlueMatcher(seed.glue);
 
   // Inputs for the factoring check (below): the closed lexicon, and the
   // conjugation forms the structure library actually teaches — a ます-form
@@ -504,14 +539,14 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
       line.text,
       lexicon: lexicon,
       taughtForms: taughtForms,
-      glue: knownGrammarGlue,
+      glue: seed.glue,
     );
     if (!factoring.ok) {
       violations.add(
           'line $n: text does not factor into taught material — unmatched '
           'from "${factoring.unmatchedFrom}"');
       final candidate = _candidateFromFactoringFailure(
-          factoring.unmatchedFrom!, line.tokens);
+          factoring.unmatchedFrom!, line.tokens, seed.glue);
       if (candidate != null) candidates.add(candidate);
     }
     for (final tok in line.tokens) {
@@ -524,7 +559,7 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
       // (decision D20/D21) — this catches both an invented kanji glue token
       // and a kana-only invented word like an untaught honorific (さん),
       // which the old kanji-only check could not distinguish from real glue.
-      if (tok.isGlue && !isKnownGlue(tok.surface)) {
+      if (tok.isGlue && !glueMatcher.isKnown(tok.surface)) {
         if (taughtKana.contains(tok.surface)) {
           // The surface IS a taught word's kana — the model merely mislabeled
           // a real word as glue (a metadata error, not a scope leak): every
@@ -597,12 +632,13 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
   return ScopeReport(violations, candidates: candidates.toList());
 }
 
-/// Backfill eligibility (v1): multi-character, no kanji. Single characters
-/// are almost certainly particles (deferred to the glue-table promotion);
-/// kanji-bearing surfaces have an unknown reading the review card can't
-/// safely capture yet.
+/// Backfill eligibility: kana-only, non-empty, not pure punctuation.
+/// Single characters are eligible since D56 — the reading screen routes them
+/// to the glue review sheet rather than the word card. Kanji-bearing
+/// surfaces stay excluded: their reading is unknown, which the review card
+/// can't safely capture yet.
 String? _eligibleCandidate(String s) =>
-    s.runes.length > 1 && !_hasKanji(s) ? s : null;
+    _comparable(s).isNotEmpty && !_hasKanji(s) ? s : null;
 
 /// Extracts a word-shaped backfill candidate from a factoring failure.
 ///
@@ -613,7 +649,7 @@ String? _eligibleCandidate(String s) =>
 /// remainder at the first punctuation/whitespace/known-glue boundary when
 /// tokens and text disagree; yields null when nothing word-shaped remains.
 String? _candidateFromFactoringFailure(
-    String unmatchedFrom, List<GenToken> tokens) {
+    String unmatchedFrom, List<GenToken> tokens, Set<String> knownGlue) {
   final rest =
       unmatchedFrom.replaceFirst(RegExp('^[$punctuationChars]+'), '');
   if (rest.isEmpty) return null;
@@ -627,7 +663,7 @@ String? _candidateFromFactoringFailure(
   // ...further cut at the earliest known-glue occurrence (a taught particle
   // fused after the unknown word, e.g. "そのほんは" → "そのほん" — still not
   // a clean word, but the glue is certainly not part of it).
-  for (final glue in knownGrammarGlue) {
+  for (final glue in knownGlue) {
     final at = prefix.indexOf(glue);
     if (at > 0) prefix = prefix.substring(0, at);
   }

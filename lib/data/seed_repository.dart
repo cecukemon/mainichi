@@ -36,6 +36,12 @@ class DriftSeedSource implements SeedSource {
           ..orderBy([(s) => OrderingTerm.asc(s.id)]))
         .get();
 
+    // The whole table — presence means approved (a row only gets here via
+    // the initial seed or the backfill review sheet, D56).
+    final glue = await (_db.select(_db.grammarGlue)
+          ..orderBy([(g) => OrderingTerm.asc(g.surface)]))
+        .get();
+
     final slots = await (_db.select(_db.slots)
           ..orderBy([
             (s) => OrderingTerm.asc(s.structureId),
@@ -69,6 +75,7 @@ class DriftSeedSource implements SeedSource {
             slots: slotsByStructure[s.id] ?? const [],
           ),
       ],
+      glue: {for (final g in glue) g.surface},
     );
   }
 }

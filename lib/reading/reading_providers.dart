@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta/meta.dart';
 
 import '../data/conversation_cache.dart';
+import '../data/enums.dart' show GlueKind;
 import '../data/seed_repository.dart';
 import '../generation/conversation_generator.dart';
 import '../generation/generation_client.dart';
@@ -243,10 +244,7 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
 
   /// The backfill affordance's commit path (D52): write the approved word
   /// through the capture commit, then re-validate the rejected conversation
-  /// against a freshly loaded seed — if the added word was the only problem,
-  /// it now passes and is shown (the self-healing loop). Otherwise the error
-  /// state returns with recomputed candidates (the just-added word drops out;
-  /// any remaining ones show).
+  /// ([_revalidateAfterBackfill]).
   Future<void> addCandidateToBunko(
       VocabDraftItem approved, String surface) async {
     final rejected = state.rejectedConversation;
@@ -258,6 +256,32 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
       await _fail("Couldn't save the word. You can try again, or head back.");
       return;
     }
+    await _revalidateAfterBackfill(rejected);
+  }
+
+  /// The glue analogue of [addCandidateToBunko] (D56): commit an approved
+  /// particle/glue surface into the GrammarGlue table, then re-validate — the
+  /// freshly loaded seed carries the new glue row, so the self-heal closes
+  /// for particles exactly as it does for words.
+  Future<void> addGlueToBunko(String surface, GlueKind kind) async {
+    final rejected = state.rejectedConversation;
+    if (rejected == null) return; // phase changed under the sheet — no-op
+    state = const ReadingSessionState.loading();
+    try {
+      await _backfill.commitGlue(surface: surface, kind: kind);
+    } catch (_) {
+      await _fail("Couldn't save it. You can try again, or head back.");
+      return;
+    }
+    await _revalidateAfterBackfill(rejected);
+  }
+
+  /// After any backfill commit: re-validate the rejected conversation against
+  /// a freshly loaded seed — if the added item was the only problem, it now
+  /// passes and is shown (the self-healing loop). Otherwise the error state
+  /// returns with recomputed candidates (the just-added item drops out; any
+  /// remaining ones show).
+  Future<void> _revalidateAfterBackfill(GeneratedConversation rejected) async {
     try {
       final seed = await _seeds.loadGenerationSeed();
       final report = validateScope(rejected, seed);
@@ -274,10 +298,10 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
         );
       }
     } catch (_) {
-      // The word is committed and stands (it's legitimately taught material
+      // The item is committed and stands (it's legitimately taught material
       // regardless); only the re-validation failed.
       await _fail(
-          'The word was added, but the conversation could not be re-checked. '
+          'It was added, but the conversation could not be re-checked. '
           'You can try a fresh one, or head back.');
     }
   }

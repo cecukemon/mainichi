@@ -19,6 +19,7 @@ import '../../listening/line_audio.dart';
 import '../../listening/listening_providers.dart';
 import '../../listening/playback_controller.dart';
 import '../furigana_text.dart';
+import '../glue_review_sheet.dart';
 import '../line_display.dart';
 import '../reading_providers.dart';
 import '../word_lookup_sheet.dart';
@@ -129,11 +130,15 @@ class _ErrorView extends ConsumerWidget {
 
   /// The backfill review sheet: the capture flow's card, reframed for a word
   /// with no worksheet behind it. Approve requires a meaning; discard is the
-  /// answer when the class never taught the word.
+  /// answer when the class never taught the word. A single-character surface
+  /// is almost certainly a particle, so it gets the glue-flavored sheet
+  /// instead (D56) — same framing, defaulting to a GrammarGlue commit, with
+  /// the word card one toggle away.
   void _openBackfillSheet(BuildContext context, WidgetRef ref, String surface) {
     final notifier = ref.read(readingSessionProvider(start).notifier);
     final draft =
         ref.read(scopeBackfillProvider).draftForSurface(surface);
+    final isSingleChar = surface.runes.length == 1;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -143,33 +148,15 @@ class _ErrorView extends ConsumerWidget {
             bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
         child: SizedBox(
           height: MediaQuery.of(sheetContext).size.height * 0.75,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Did your class teach this?',
-                        style: Theme.of(sheetContext).textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Only add it if it appeared in class — otherwise discard.',
-                      style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(sheetContext)
-                              .colorScheme
-                              .onSurfaceVariant),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: VocabReviewCard(
-                  item: draft,
-                  showWorksheetComparison: false,
-                  requireMeaning: true,
-                  onApprove: (edited) {
+          child: isSingleChar
+              ? GlueReviewSheet(
+                  surface: surface,
+                  wordDraft: draft,
+                  onApproveGlue: (kind) {
+                    Navigator.of(sheetContext).pop();
+                    notifier.addGlueToBunko(surface, kind);
+                  },
+                  onApproveWord: (edited) {
                     Navigator.of(sheetContext).pop();
                     notifier.addCandidateToBunko(edited, surface);
                   },
@@ -178,10 +165,50 @@ class _ErrorView extends ConsumerWidget {
                     Navigator.of(sheetContext).pop();
                     notifier.dismissCandidate(surface);
                   },
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Did your class teach this?',
+                              style:
+                                  Theme.of(sheetContext).textTheme.titleMedium),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Only add it if it appeared in class — otherwise discard.',
+                            style: Theme.of(sheetContext)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                    color: Theme.of(sheetContext)
+                                        .colorScheme
+                                        .onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: VocabReviewCard(
+                        item: draft,
+                        showWorksheetComparison: false,
+                        requireMeaning: true,
+                        onApprove: (edited) {
+                          Navigator.of(sheetContext).pop();
+                          notifier.addCandidateToBunko(edited, surface);
+                        },
+                        onSkip: () => Navigator.of(sheetContext).pop(),
+                        onDiscard: () {
+                          Navigator.of(sheetContext).pop();
+                          notifier.dismissCandidate(surface);
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
       ),
     );

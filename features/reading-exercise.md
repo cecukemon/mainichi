@@ -59,7 +59,9 @@ Live failures kept naming words the class *did* teach but no worksheet ever capt
 - **Human confirmation is the Bunko's integrity rule, not worksheets per se.** The model nominates, the learner confirms — same contract as capture review. Guardrails against convenience bias (every approval makes an error disappear): one candidate at a time, no bulk approve, discard-friendly framing.
 - **Glue relaxation, kana-only (D53):** a glue-tagged token matching a taught word's kana passes validation (a mislabel, not a leak — factoring still verifies every character); required, or the backfilled word could never rescue the conversation that flagged it. Kanji surfaces stay violations (they'd render without furigana). Acceptances are logged under `reading.scope`.
 
-**Deferred:** single-character candidates (particles — wait for the glue-table promotion; they're silently filtered from chips today), kanji-bearing candidates (unknown reading; the card's kana entry is free-text rōmaji), and a merge UI for the role-variant near-duplicate case (same kana committed under a different role inserts a second row).
+**Single-character candidates (added 2026-07-19, D56):** the glue-table promotion landed, lifting the v1 deferral. The allowlist now lives in the reviewable `GrammarGlue` table (loaded into `GenerationSeed.glue`, read by `validateScope` in place of the old `knownGrammarGlue` constant), and a single-char chip opens the glue-flavored `GlueReviewSheet` instead of the word card: same "Did your class teach this?" framing, a kind selector defaulting to Particle, no meaning required — Approve commits a `GrammarGlue` row (`commitGlue`: own transaction, `{"source": "reading-backfill-glue"}` provenance, no-op if the surface is already known) and re-validates through the same self-healing loop as words. A "This is a real word, not grammar" toggle swaps in the standard `VocabReviewCard` for the rare genuine single-char word.
+
+**Still deferred:** kanji-bearing candidates (unknown reading; the card's kana entry is free-text rōmaji), and a merge UI for the role-variant near-duplicate case (same kana committed under a different role inserts a second row).
 
 ---
 

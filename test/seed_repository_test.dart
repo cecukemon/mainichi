@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mainichi/data/database.dart';
 import 'package:mainichi/data/enums.dart';
+import 'package:mainichi/data/glue_seed.dart';
 import 'package:mainichi/data/seed_repository.dart';
 
 void main() {
@@ -95,6 +96,16 @@ void main() {
         template: 'はい', status: const Value(ItemStatus.approved)));
     final seed = await source.loadGenerationSeed();
     expect(seed.structures.single.slots, isEmpty);
+  });
+
+  test('seed glue comes from the GrammarGlue table, growing with it (D56)',
+      () async {
+    final seed = await source.loadGenerationSeed();
+    expect(seed.glue, {for (final (surface, _) in grammarGlueSeedRows) surface});
+
+    await db.into(db.grammarGlue).insert(
+        GrammarGlueCompanion.insert(surface: 'ね', kind: GlueKind.particle));
+    expect((await source.loadGenerationSeed()).glue, contains('ね'));
   });
 
   test('wire strings round-trip through the extraction mappers', () {

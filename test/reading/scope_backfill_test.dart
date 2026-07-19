@@ -68,4 +68,48 @@ void main() {
       expect(await db.select(db.words).get(), hasLength(1));
     });
   });
+
+  group('commitGlue (D56)', () {
+    test('writes a glue row with glue-backfill provenance', () async {
+      await service.commitGlue(surface: 'が', kind: GlueKind.particle);
+
+      final row = await (db.select(db.grammarGlue)
+            ..where((g) => g.surface.equals('が')))
+          .getSingle();
+      expect(row.kind, GlueKind.particle);
+
+      final import = await db.select(db.imports).getSingle();
+      expect(row.importId, import.id);
+      expect(import.sourceImage, isNull);
+      expect(import.model, ModelConfig.generation);
+      final raw = jsonDecode(import.rawDraftJson!) as Map<String, dynamic>;
+      expect(raw['source'], glueBackfillSource);
+      expect(raw['surface'], 'が');
+      expect(raw['kind'], 'particle');
+    });
+
+    test('an already-known surface is a no-op — no duplicate row, no orphan '
+        'Imports provenance', () async {
+      await service.commitGlue(surface: 'が', kind: GlueKind.particle);
+      await service.commitGlue(surface: 'が', kind: GlueKind.other);
+
+      final rows = await (db.select(db.grammarGlue)
+            ..where((g) => g.surface.equals('が')))
+          .get();
+      expect(rows, hasLength(1));
+      expect(rows.single.kind, GlueKind.particle); // first commit stands
+      expect(await db.select(db.imports).get(), hasLength(1));
+    });
+
+    test('a seeded surface is a no-op too (presence is what matters)',
+        () async {
+      await service.commitGlue(surface: 'は', kind: GlueKind.particle);
+      final rows = await (db.select(db.grammarGlue)
+            ..where((g) => g.surface.equals('は')))
+          .get();
+      expect(rows, hasLength(1));
+      expect(rows.single.importId, isNull); // still the seed row
+      expect(await db.select(db.imports).get(), isEmpty);
+    });
+  });
 }
