@@ -100,7 +100,16 @@ void main() {
 
     expect(find.text('Nothing here yet'), findsOneWidget);
     expect(find.textContaining('saved automatically'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Start reading practice'),
+    // The empty state's centered call-to-action generates a fresh conversation.
+    expect(find.widgetWithText(FilledButton, 'Generate new conversation'),
+        findsOneWidget);
+  });
+
+  testWidgets('populated list shows a Generate new conversation action',
+      (tester) async {
+    await _pump(tester, rows: [_row(1, 'Ordering at a restaurant')]);
+
+    expect(find.widgetWithText(FloatingActionButton, 'Generate new conversation'),
         findsOneWidget);
   });
 

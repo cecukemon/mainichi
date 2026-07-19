@@ -30,10 +30,17 @@ class ConversationListScreen extends ConsumerWidget {
     });
   }
 
-  void _startReading(BuildContext context) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => const ReadingExerciseScreen(start: ReadingStart.generate),
-    ));
+  void _generateNew(BuildContext context, WidgetRef ref) {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (_) =>
+              const ReadingExerciseScreen(start: ReadingStart.generate),
+        ))
+        // A generation is written through to the cache on its ready state, so
+        // reload on return to surface it in the list.
+        .then((_) {
+      if (context.mounted) ref.read(conversationListProvider.notifier).load();
+    });
   }
 
   /// Optimistic delete + snackbar undo. The row is already out of the list
@@ -70,7 +77,16 @@ class ConversationListScreen extends ConsumerWidget {
     final state = ref.watch(conversationListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Past conversations')),
+      appBar: AppBar(title: const Text('Reading practice')),
+      // A fresh generation is always one tap away; the empty state carries its
+      // own centered call-to-action, so the FAB only rides the populated list.
+      floatingActionButton: state.rows.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _generateNew(context, ref),
+              icon: const Icon(Icons.add),
+              label: const Text('Generate new conversation'),
+            ),
       body: Builder(
         builder: (context) {
           if (state.loading) {
@@ -82,9 +98,11 @@ class ConversationListScreen extends ConsumerWidget {
                     ref.read(conversationListProvider.notifier).load());
           }
           if (state.isEmpty) {
-            return _EmptyView(onStart: () => _startReading(context));
+            return _EmptyView(onStart: () => _generateNew(context, ref));
           }
           return ListView.separated(
+            // Room for the extended FAB so it never covers the last row.
+            padding: const EdgeInsets.only(bottom: 88),
             itemCount: state.rows.length,
             separatorBuilder: (_, _) => const Divider(height: 0.5),
             itemBuilder: (context, i) {
@@ -202,8 +220,8 @@ class _EmptyView extends StatelessWidget {
             const SizedBox(height: 20),
             FilledButton.icon(
               onPressed: onStart,
-              icon: const Icon(Icons.menu_book_outlined),
-              label: const Text('Start reading practice'),
+              icon: const Icon(Icons.add),
+              label: const Text('Generate new conversation'),
             ),
           ],
         ),

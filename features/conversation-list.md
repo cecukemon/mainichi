@@ -14,7 +14,7 @@ The cache already stores every valid conversation, but the learner can't see it.
 
 ## 2. Flow
 
-**Entry.** The home screen's **"Re-read a previous one"** button navigates to the conversation list screen instead of directly launching the LRU conversation.
+**Entry.** The home screen's single **"Reading practice"** button navigates to this screen — it is now the reading hub, not a direct launch into a generated conversation. Generating a fresh one is an action *on* this screen (**"Generate new conversation"** — a FAB on the populated list, the centered call-to-action on the empty state), so the old separate "Re-read a previous one" home button is gone.
 
 **List.** A scrolling list, newest first (by `createdAt`). Each row shows:
 

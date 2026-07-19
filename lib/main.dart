@@ -5,9 +5,7 @@ import 'capture/capture_providers.dart';
 import 'capture/screens/photo_import_screen.dart';
 import 'data/connection.dart';
 import 'data/database.dart';
-import 'reading/reading_providers.dart' show ReadingStart;
 import 'reading/screens/conversation_list_screen.dart';
-import 'reading/screens/reading_exercise_screen.dart';
 import 'settings/api_key_store.dart';
 import 'settings/screens/settings_screen.dart';
 import 'settings/settings_providers.dart';
@@ -65,23 +63,11 @@ class HomeScreen extends ConsumerWidget {
             FilledButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => const ReadingExerciseScreen(
-                    start: ReadingStart.generate,
-                  ),
+                  builder: (_) => const ConversationListScreen(),
                 ),
               ),
               icon: const Icon(Icons.menu_book_outlined),
               label: const Text('Reading practice'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const ConversationListScreen(),
-                ),
-              ),
-              icon: const Icon(Icons.history_outlined),
-              label: const Text('Re-read a previous one'),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
