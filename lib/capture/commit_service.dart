@@ -257,8 +257,14 @@ Future<CommitResult> _runCommit(
               ),
             );
     if (existingStructure == null) {
+      // Slot names are unique per structure (slots.uniqueKeys). A draft can
+      // still carry a repeated name — a placeholder reused in the template, or
+      // an extractor mislabel — so skip repeats here rather than let the
+      // duplicate INSERT abort the whole commit transaction.
+      final seenSlotNames = <String>{};
       for (var ordinal = 0; ordinal < template.slots.length; ordinal++) {
         final slot = template.slots[ordinal];
+        if (!seenSlotNames.add(slot.name)) continue;
         await db.into(db.slots).insert(
               SlotsCompanion.insert(
                 structureId: structureId,

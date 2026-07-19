@@ -87,15 +87,22 @@ List<String> _kanjiCandidates(Object? raw, String kanji) {
 
 TemplateDraftItem _templateFromExtraction(Map<String, dynamic> s) {
   final slots = (s['slots'] as List).cast<Map<String, dynamic>>();
+  // Slot names must be unique within a template (they map to `{name}`
+  // placeholders in the template text, and the DB enforces uniqueness). The
+  // extractor can emit the same name twice — a placeholder reused in the
+  // template, or a mislabel — so keep the first occurrence of each name and
+  // drop repeats, mirroring the de-dup done for kanji candidates above.
+  final seenNames = <String>{};
   return TemplateDraftItem(
     template: s['template'] as String,
     slots: [
       for (final slot in slots)
-        SlotDraft(
-          name: slot['name'] as String,
-          role: WordRole.fromExtraction(slot['role'] as String),
-          form: SlotForm.fromExtraction(slot['form'] as String?),
-        ),
+        if (seenNames.add(slot['name'] as String))
+          SlotDraft(
+            name: slot['name'] as String,
+            role: WordRole.fromExtraction(slot['role'] as String),
+            form: SlotForm.fromExtraction(slot['form'] as String?),
+          ),
     ],
     example: s['example'] as String,
     confidence: _confidenceFromExtraction(s['confidence'] as String),
