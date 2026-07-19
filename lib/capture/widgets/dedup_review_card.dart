@@ -72,7 +72,10 @@ class DedupReviewCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${match.kanji}  ${match.kana}', style: const TextStyle(fontSize: 20)),
+                Text(
+                  match.kanji.isNotEmpty ? '${match.kanji}  ${match.kana}' : match.kana,
+                  style: const TextStyle(fontSize: 20),
+                ),
                 const SizedBox(height: 2),
                 Text(match.meaning ?? '', style: Theme.of(context).textTheme.bodyMedium),
                 if (match.exampleSentences.isNotEmpty) ...[
