@@ -30,6 +30,8 @@
 	<string>Used to photograph class worksheets so they can be turned into vocabulary and practice.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Used to import a photo of a class worksheet so it can be turned into vocabulary and practice.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Used to record you reading a conversation aloud so your pronunciation can be checked.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

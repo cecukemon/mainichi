@@ -16,6 +16,9 @@ import 'package:mainichi/listening/playback_controller.dart';
 import 'package:mainichi/reading/reading_providers.dart';
 import 'package:mainichi/reading/scope_backfill.dart';
 import 'package:mainichi/reading/screens/reading_exercise_screen.dart';
+import 'package:mainichi/speaking/speaking_providers.dart';
+import 'package:mainichi/speaking/speech_recorder.dart';
+import 'package:mainichi/speaking/stt_service.dart';
 
 const _seed = GenerationSeed(
   vocab: [
@@ -284,6 +287,35 @@ class FakeLinePlayer implements LineAudioPlayer {
   Future<void> dispose() async => disposed = true;
 }
 
+class FakeSpeechRecorder implements SpeechRecorder {
+  bool permission = true;
+  int starts = 0;
+  int cancels = 0;
+
+  @override
+  Future<bool> hasPermission() async => permission;
+
+  @override
+  Future<void> start() async => starts++;
+
+  @override
+  Future<List<int>?> stop() async => [1, 2, 3];
+
+  @override
+  Future<void> cancel() async => cancels++;
+
+  @override
+  Future<void> dispose() async {}
+}
+
+class FakeStt implements SttService {
+  FakeStt([this.transcript = '田中はすしを食べますか']);
+  String transcript;
+
+  @override
+  Future<String> transcribe(List<int> audioContent) async => transcript;
+}
+
 Future<FakeGenerationService> _pumpScreen(
   WidgetTester tester, {
   GenerationSeed seed = _seed,
@@ -293,6 +325,8 @@ Future<FakeGenerationService> _pumpScreen(
   FakeAudioStore? audio,
   FakeLinePlayer? player,
   FakeScopeBackfillService? backfill,
+  FakeSpeechRecorder? recorder,
+  FakeStt? stt,
   ReadingStart start = ReadingStart.generate,
   int? conversationId,
 }) async {
@@ -311,6 +345,9 @@ Future<FakeGenerationService> _pumpScreen(
             .overrideWithValue(() => player ?? FakeLinePlayer()),
         scopeBackfillProvider
             .overrideWithValue(backfill ?? FakeScopeBackfillService()),
+        sttServiceProvider.overrideWithValue(stt ?? FakeStt()),
+        speechRecorderFactoryProvider
+            .overrideWithValue(() => recorder ?? FakeSpeechRecorder()),
       ],
       child: MaterialApp(
         home: ReadingExerciseScreen(
@@ -932,6 +969,80 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Your turn — say it aloud'), findsNothing);
     expect(find.byTooltip('Play'), findsOneWidget); // back to idle
+  });
+
+  testWidgets('read-aloud: record a line, get a verdict and the transcript',
+      (tester) async {
+    final recorder = FakeSpeechRecorder();
+    // FakeStt defaults to line 0's text (minus spacing/punctuation) → a match.
+    await _pumpScreen(tester, recorder: recorder);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.pumpAndSettle();
+    // A mic per line; no verdicts yet.
+    expect(find.byTooltip('Record this line'), findsNWidgets(2));
+    expect(find.text('Sounds right'), findsNothing);
+
+    await tester.tap(find.byTooltip('Record this line').first);
+    await tester.pumpAndSettle();
+    expect(recorder.starts, 1);
+    expect(find.byTooltip('Stop and check'), findsOneWidget);
+    expect(find.textContaining('Recording…'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Stop and check'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sounds right'), findsOneWidget);
+    expect(find.text('Heard: 田中はすしを食べますか'), findsOneWidget);
+  });
+
+  testWidgets('read-aloud: a mismatch shows the raw transcript, not a pass',
+      (tester) async {
+    await _pumpScreen(tester, stt: FakeStt('こんにちは'));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Record this line').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Stop and check'));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Didn't match"), findsOneWidget);
+    expect(find.text('Heard: こんにちは'), findsOneWidget);
+  });
+
+  testWidgets('read-aloud: denied mic permission explains itself on the line',
+      (tester) async {
+    await _pumpScreen(tester, recorder: FakeSpeechRecorder()..permission = false);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Record this line').first);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Microphone access is off'), findsOneWidget);
+  });
+
+  testWidgets('read-aloud and listening mode are mutually exclusive',
+      (tester) async {
+    await _pumpScreen(tester);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Record this line'), findsNWidgets(2));
+
+    // Turning on listening mode drops read-aloud.
+    await tester.tap(find.byTooltip('Listening mode (hide text)'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Record this line'), findsNothing);
+    expect(find.byType(ImageFiltered), findsOneWidget);
   });
 
   testWidgets('a failed synthesis shows an inline audio error, text stays',

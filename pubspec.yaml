@@ -60,6 +60,11 @@ dependencies:
   just_audio: ^0.10.0
   crypto: ^3.0.3 # content-addressed audio filenames (stale audio self-invalidates)
 
+  # Speaking exercise rung 2 — read-aloud (features/speaking-exercise.md §3):
+  # mic capture of the learner reading a line, sent to Google Cloud STT. Behind
+  # a SpeechRecorder interface (platform channels — faked in tests).
+  record: ^7.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
