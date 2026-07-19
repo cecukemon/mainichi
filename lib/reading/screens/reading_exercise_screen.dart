@@ -5,7 +5,9 @@
 ///
 /// Also carries the listening layer (features/listening-exercise.md): a
 /// player row (play/stop, speed), per-line replay in the speaker margin, and
-/// a blur-the-text listening mode. Audio never autoplays.
+/// a blur-the-text listening mode. Audio never autoplays. Shadowing mode
+/// (D63, features/speaking-exercise.md §2) rides on the same player row:
+/// playback holds after each line — "Your turn" — until the learner taps on.
 library;
 
 import 'dart:ui' show ImageFilter;
@@ -434,8 +436,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             seed: widget.seed,
             taughtForms: widget.taughtForms,
             showFurigana: widget.showFurigana,
+            // Highlighted while sounding and through the shadowing hold —
+            // the learner repeats the line they can see marked.
             isCurrent: audio?.currentLine == index &&
-                audio?.status == AudioStatus.playing,
+                (audio?.status == AudioStatus.playing ||
+                    audio?.status == AudioStatus.awaitingRepeat),
             onReplay: audio == null ? null : () => audio.playLine(index),
           ),
       ],
@@ -456,8 +461,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   }
 }
 
-/// The player row: play/stop, speed (client-side rate, D50), listening-mode
-/// toggle. Inline error text on synthesis failure — reading is unaffected.
+/// The player row: play/stop, speed (client-side rate, D50), shadowing
+/// toggle (D63) with its "Your turn" hold row, listening-mode toggle. Inline
+/// error text on synthesis failure — reading is unaffected.
 class _AudioBar extends StatelessWidget {
   const _AudioBar({
     required this.controller,
@@ -488,7 +494,8 @@ class _AudioBar extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 )
-              else if (controller.status == AudioStatus.playing)
+              else if (controller.status == AudioStatus.playing ||
+                  controller.status == AudioStatus.awaitingRepeat)
                 IconButton(
                   icon: const Icon(Icons.stop_circle_outlined, size: 30),
                   tooltip: 'Stop',
@@ -519,6 +526,14 @@ class _AudioBar extends StatelessWidget {
               ),
               const Spacer(),
               IconButton(
+                icon: const Icon(Icons.record_voice_over_outlined),
+                tooltip: controller.shadowing
+                    ? 'Turn off shadowing'
+                    : 'Shadowing (repeat after each line)',
+                isSelected: controller.shadowing,
+                onPressed: () => controller.setShadowing(!controller.shadowing),
+              ),
+              IconButton(
                 icon: Icon(
                     blurred ? Icons.visibility_outlined : Icons.hearing_outlined),
                 tooltip: blurred ? 'Show text' : 'Listening mode (hide text)',
@@ -527,6 +542,31 @@ class _AudioBar extends StatelessWidget {
               ),
             ],
           ),
+          // Shadowing hold (D63): the learner repeats the line aloud, then
+          // taps on. Advance is a tap, never a timer.
+          if (controller.status == AudioStatus.awaitingRepeat)
+            Padding(
+              padding: const EdgeInsets.only(left: 12, bottom: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Your turn — say it aloud',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: controller.repeatShadowLine,
+                    child: const Text('Hear it again'),
+                  ),
+                  const SizedBox(width: 4),
+                  FilledButton(
+                    onPressed: controller.advanceShadow,
+                    child: Text(controller.onLastLine ? 'Done' : 'Next line'),
+                  ),
+                ],
+              ),
+            ),
           if (controller.status == AudioStatus.error)
             Padding(
               padding: const EdgeInsets.only(left: 12, bottom: 4),
