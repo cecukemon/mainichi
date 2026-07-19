@@ -20,7 +20,9 @@ void main() {
     expect((props['kanji_candidates'] as Map)['type'], 'array');
     final region = props['region'] as Map<String, dynamic>;
     expect(region['type'], 'array');
-    expect(region['maxItems'], 4); // [l, t, r, b]
+    // No maxItems — constrained-decoding structured output 400s on array
+    // length bounds; the [l,t,r,b] shape is enforced by CropRegion.tryParse.
+    expect(region.containsKey('maxItems'), isFalse);
   });
 
   test('the prompt instructs on candidates and regions', () {

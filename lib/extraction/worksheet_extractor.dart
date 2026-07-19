@@ -146,13 +146,16 @@ final Map<String, dynamic> extractionSchema = {
           'region': {
             'type': 'array',
             'items': {'type': 'number'},
-            'maxItems': 4,
+            // No maxItems: the structured-output (constrained-decoding) schema
+            // rejects array length bounds with a 400. The "exactly 4 numbers"
+            // shape is stated in the description and enforced by
+            // CropRegion.tryParse, which treats anything else as no region.
             'description':
                 'Approximate bounding box of where this item (and its picture, '
-                    'if any) appears on the image, as [left, top, right, '
-                    'bottom] fractions 0–1 of the image width/height, top-left '
-                    'origin. Best-effort framing for the review UI, not exact. '
-                    'Empty [] when unsure.',
+                    'if any) appears on the image, as exactly four numbers '
+                    '[left, top, right, bottom], fractions 0–1 of the image '
+                    'width/height, top-left origin. Best-effort framing for the '
+                    'review UI, not exact. Empty [] when unsure.',
           },
           'notes': {
             'type': 'string',

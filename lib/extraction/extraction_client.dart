@@ -50,18 +50,47 @@ class LiveExtractionService implements ExtractionService {
       mediaType: mediaType,
     );
 
-    final response = await _dio.post<Map<String, dynamic>>(
-      _endpoint,
-      data: body,
-      options: Options(
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-      ),
-    );
+    final Response<Map<String, dynamic>> response;
+    try {
+      response = await _dio.post<Map<String, dynamic>>(
+        _endpoint,
+        data: body,
+        options: Options(
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+        ),
+      );
+    } on DioException catch (e) {
+      // Surface the API's own error text (e.g. a 400 "invalid schema" naming
+      // the offending field) instead of dio's generic status-code blurb.
+      final detail = _apiErrorMessage(e.response?.data);
+      if (detail != null) throw ExtractionApiError(e.response?.statusCode, detail);
+      rethrow;
+    }
 
     return parseExtractionResponse(response.data!);
   }
+
+  /// Pulls `error.message` out of an Anthropic error body, if present.
+  static String? _apiErrorMessage(Object? data) {
+    if (data is Map && data['error'] is Map) {
+      final message = (data['error'] as Map)['message'];
+      if (message is String && message.isNotEmpty) return message;
+    }
+    return null;
+  }
+}
+
+/// An error the extraction API returned in its response body (e.g. an invalid
+/// request), carrying the API's own message rather than dio's generic one.
+class ExtractionApiError implements Exception {
+  ExtractionApiError(this.statusCode, this.message);
+  final int? statusCode;
+  final String message;
+  @override
+  String toString() =>
+      'ExtractionApiError(${statusCode ?? '?'}): $message';
 }
