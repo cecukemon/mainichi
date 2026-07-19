@@ -83,12 +83,14 @@ final Map<String, dynamic> extractionSchema = {
         'required': [
           'kana',
           'kanji',
+          'kanji_candidates',
           'romaji',
           'meaning',
           'role',
           'kana_only',
           'meaning_source',
           'confidence',
+          'region',
           'notes',
         ],
         'properties': {
@@ -99,7 +101,18 @@ final Map<String, dynamic> extractionSchema = {
           },
           'kanji': {
             'type': 'string',
-            'description': 'Kanji form if the sheet shows one, else "".',
+            'description': 'Kanji form if the sheet shows one, else "". Must '
+                'equal the first entry of kanji_candidates when that is '
+                'non-empty.',
+          },
+          'kanji_candidates': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'description':
+                'Plausible printed kanji forms, best guess first, up to 3. '
+                    'Offer more than one ONLY when the print is genuinely '
+                    'ambiguous (low resolution, similar kanji); the first '
+                    'entry must equal kanji. Empty [] when no kanji is printed.',
           },
           'romaji': {
             'type': 'string',
@@ -129,6 +142,17 @@ final Map<String, dynamic> extractionSchema = {
             'description':
                 'high = clean printed kana vocab; low = anything resting on a '
                     'guess (picture-derived meaning, uncertain reading).',
+          },
+          'region': {
+            'type': 'array',
+            'items': {'type': 'number'},
+            'maxItems': 4,
+            'description':
+                'Approximate bounding box of where this item (and its picture, '
+                    'if any) appears on the image, as [left, top, right, '
+                    'bottom] fractions 0–1 of the image width/height, top-left '
+                    'origin. Best-effort framing for the review UI, not exact. '
+                    'Empty [] when unsure.',
           },
           'notes': {
             'type': 'string',
@@ -219,6 +243,8 @@ Vocabulary:
 - Record each printed vocabulary item once, in dictionary (base) form. If a conjugated form is also shown (e.g. the i-adjective おもしろい with its negative stem おもしろく, or the irregular いい to よく), keep the base form in kana and describe the conjugation in notes.
 - kana is the hiragana/katakana reading, always required, in dictionary base form. For na-adjectives, kana is the bare reading without the な / (な) marker (e.g. きれい, not きれい(な)) — the role records that it is a na-adjective and the な is handled by templates.
 - kanji is the kanji form ONLY if it is actually printed on the sheet. Do NOT supply kanji the worksheet does not show, even if you know it — a beginner sees only what the sheet prints. Otherwise "".
+- kanji_candidates lists plausible readings of the printed kanji, best first, and its first entry must equal kanji. Give more than one ONLY when the print is genuinely ambiguous (low resolution, look-alike kanji); otherwise a single entry (or [] when no kanji is printed) is correct. Do not pad it with kanji you merely know.
+- region is the approximate location of the item on the image (including its picture, if it has one) as [left, top, right, bottom] fractions of the image size, top-left origin. It is a best-effort frame for the review UI — approximate is fine, and [] is acceptable when you cannot place it. The image has already been rotated upright, so use the image's own axes as you see them.
 - romaji is the romaji only if printed on the sheet as a reading aid (these sheets often have it), otherwise "".
 - Worksheets rarely print a translation. Infer meaning (in English) from an accompanying picture when there is one and set meaning_source to "picture" with confidence "low" (drawings are ambiguous: "clock" vs "watch", "house" vs "home"). Use "printed_gloss" only if a non-handwritten translation is actually printed. If you cannot tell, set meaning to "" and meaning_source to "none".
 - Clean printed kana vocabulary is confidence "high". Anything resting on a guess (picture-derived meaning, uncertain reading) is "low".
@@ -250,6 +276,8 @@ Map<String, dynamic> buildExtractionRequest({
   // char 17506). 16000 covers a full worksheet while staying in the safe
   // non-streaming range — the live client makes a single blocking `dio` POST,
   // and larger caps risk HTTP timeouts without switching to streaming.
+  // The D58 kanji_candidates + region fields add only ~10-20 output tokens
+  // per item (a dense 40-item sheet ≈ +1k), so the cap is unchanged.
   int maxTokens = 16000,
 }) {
   return {

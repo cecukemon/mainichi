@@ -90,4 +90,25 @@ void main() {
     final approveFinder = find.widgetWithText(FilledButton, 'Approve');
     expect(tester.widget<FilledButton>(approveFinder).onPressed, isNotNull);
   });
+
+  testWidgets('ranked kanji candidates each render as a chip, plus "No kanji" '
+      '(D58)', (tester) async {
+    await _pumpCard(
+      tester,
+      item: const VocabDraftItem(
+        kana: 'はし',
+        kanji: '橋',
+        romaji: '',
+        meaning: 'bridge',
+        role: WordRole.noun,
+        kanaOnly: false,
+        meaningSource: MeaningSource.inferred,
+        confidence: ConfidenceTier.low,
+        kanjiCandidates: ['橋', '箸'],
+      ),
+    );
+    expect(find.widgetWithText(ChoiceChip, '橋'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '箸'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'No kanji'), findsOneWidget);
+  });
 }

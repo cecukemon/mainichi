@@ -13,6 +13,44 @@ enum ConfidenceTier { high, low }
 
 enum ReviewStatus { pending, approved, skipped }
 
+/// Where an extracted item sits on the worksheet photo, as normalized
+/// fractions of the image (top-left origin) — the extractor's best-effort
+/// bounding box (D58). Used only to crop the review card's photo box to the
+/// relevant snippet; it is framing, never a data source, so bad values simply
+/// fall back to the whole photo.
+@immutable
+class CropRegion {
+  const CropRegion(
+      {required this.left,
+      required this.top,
+      required this.right,
+      required this.bottom});
+
+  final double left, top, right, bottom;
+
+  double get width => right - left;
+  double get height => bottom - top;
+
+  /// Parses the extractor's `region` ([l, t, r, b] fractions). Returns null
+  /// unless it's exactly 4 finite numbers forming a non-degenerate box: each
+  /// edge is clamped to [0, 1], inverted edges are swapped, and a box under
+  /// 2% of a side is treated as "no usable region".
+  static CropRegion? tryParse(Object? raw) {
+    if (raw is! List || raw.length != 4) return null;
+    final nums = <double>[];
+    for (final v in raw) {
+      if (v is! num || !v.isFinite) return null;
+      nums.add(v.toDouble().clamp(0.0, 1.0));
+    }
+    final left = nums[0] < nums[2] ? nums[0] : nums[2];
+    final right = nums[0] < nums[2] ? nums[2] : nums[0];
+    final top = nums[1] < nums[3] ? nums[1] : nums[3];
+    final bottom = nums[1] < nums[3] ? nums[3] : nums[1];
+    if (right - left < 0.02 || bottom - top < 0.02) return null;
+    return CropRegion(left: left, top: top, right: right, bottom: bottom);
+  }
+}
+
 /// Whether a possible dedup match has been confirmed, rejected, or is still
 /// awaiting a decision. Independent of [ReviewStatus] — a vocab item can be
 /// approved while its dedup match is still undecided, and vice versa.
@@ -56,6 +94,7 @@ class VocabDraftItem {
     this.kanjiCandidates = const [],
     this.kanaCandidates = const [],
     this.meaningCandidates = const [],
+    this.region,
     this.handwrittenGloss,
     this.existingMatch,
     this.reviewStatus = ReviewStatus.pending,
@@ -88,6 +127,11 @@ class VocabDraftItem {
   /// where the meaning is a guess from a drawing). A handwritten margin gloss,
   /// if present, is folded in here rather than shown as its own affordance.
   final List<String> meaningCandidates;
+
+  /// Where this item sits on the worksheet photo (D58), for cropping the
+  /// review card's photo box to the relevant snippet. Null when the extractor
+  /// gave no usable region — the box then shows the whole photo.
+  final CropRegion? region;
 
   /// A handwritten margin note the extractor recorded but didn't use as
   /// content, if one seems to belong to this item.
@@ -132,6 +176,7 @@ class VocabDraftItem {
       kanjiCandidates: kanjiCandidates,
       kanaCandidates: kanaCandidates,
       meaningCandidates: meaningCandidates,
+      region: region,
       handwrittenGloss: handwrittenGloss,
       existingMatch: existingMatch,
       reviewStatus: reviewStatus ?? this.reviewStatus,

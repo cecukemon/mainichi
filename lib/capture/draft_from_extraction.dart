@@ -2,9 +2,11 @@
 /// (`worksheet_extractor.dart`'s `extractionSchema`) into an in-progress
 /// [CaptureDraft] — the shape the review-queue screens consume.
 ///
-/// The extractor emits one guess per field (kanji, kana, meaning); it doesn't
-/// yet rank alternates (capture-loop.md §4 known gap), so candidate lists here
-/// are singletons. It also doesn't attribute a handwritten gloss or a printed
+/// The extractor now ranks kanji alternates (`kanji_candidates`) and reports a
+/// best-effort crop `region` per vocab item (D58); the kana/meaning candidate
+/// lists stay singletons (one guess each). Legacy payloads (and the hand-built
+/// fixture) that predate those fields fall back to a `[kanji]` singleton and a
+/// null region. It still doesn't attribute a handwritten gloss or a printed
 /// example sentence to a specific vocab item (word-boundary matching, deferred
 /// per spec §9) — those fields stay unset for a live draft, unlike the
 /// hand-built fixture in `fixtures/sample_draft.dart`, which sets them
@@ -59,10 +61,28 @@ VocabDraftItem _vocabFromExtraction(Map<String, dynamic> v) {
     meaningSource: MeaningSource.fromExtraction(v['meaning_source'] as String),
     confidence: _confidenceFromExtraction(v['confidence'] as String),
     notes: v['notes'] as String,
-    kanjiCandidates: kanji.isEmpty ? const [] : [kanji],
+    kanjiCandidates: _kanjiCandidates(v['kanji_candidates'], kanji),
     kanaCandidates: [kana],
     meaningCandidates: meaning.isEmpty ? const [] : [meaning],
+    region: CropRegion.tryParse(v['region']),
   );
+}
+
+/// The extractor's ranked kanji list, made robust: de-duplicated in order,
+/// with the confirmed `kanji` field forced to the front. Falls back to a
+/// `[kanji]` singleton (or `[]`) when the field is absent (legacy payloads,
+/// the fixture) — preserving the pre-D58 behavior.
+List<String> _kanjiCandidates(Object? raw, String kanji) {
+  final fromModel = raw is List ? raw.whereType<String>().where((s) => s.isNotEmpty) : const <String>[];
+  final ordered = <String>[
+    if (kanji.isNotEmpty) kanji,
+    ...fromModel,
+  ];
+  final seen = <String>{};
+  return [
+    for (final k in ordered)
+      if (seen.add(k)) k,
+  ];
 }
 
 TemplateDraftItem _templateFromExtraction(Map<String, dynamic> s) {

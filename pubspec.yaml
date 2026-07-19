@@ -53,6 +53,7 @@ dependencies:
   # dart:io HttpClient becomes dio in the app; D9 offline-capable interface).
   dio: ^5.10.0
   image_picker: ^1.2.3 # in-app photo source for the live import flow
+  image: ^4.3.0 # decode/EXIF-bake/downscale/crop of the picked photo before send (D57)
 
   # Listening exercise (features/listening-exercise.md): playback of cached
   # per-line TTS audio with client-side speed control (0.5/0.75/1.0).

@@ -114,6 +114,70 @@ void main() {
     expect(draft.rawDraftJson, isNotNull);
   });
 
+  test('legacy payload (no kanji_candidates/region) falls back to singletons '
+      'and a null region', () {
+    // _sampleExtraction predates D58 — the fallback must still hold.
+    final draft = draftFromExtraction(_sampleExtraction());
+    expect(draft.vocabulary[0].region, isNull);
+    expect(draft.vocabulary[1].kanjiCandidates, ['面白い']);
+    expect(draft.vocabulary[1].region, isNull);
+  });
+
+  test('maps ranked kanji_candidates, deduped with the confirmed kanji first',
+      () {
+    final draft = draftFromExtraction({
+      'worksheet': {'title': '', 'topic': '', 'orientation_note': 'upright'},
+      'vocabulary': [
+        {
+          'kana': 'はし',
+          'kanji': '橋',
+          'kanji_candidates': ['橋', '箸', '橋'], // includes a dup
+          'romaji': '',
+          'meaning': 'bridge',
+          'role': 'noun',
+          'kana_only': false,
+          'meaning_source': 'inferred',
+          'confidence': 'low',
+          'region': [0.1, 0.2, 0.5, 0.35],
+          'notes': '',
+        },
+      ],
+      'structures': <Object>[],
+      'handwriting': {'detected': false, 'ignored_notes': <String>[]},
+    });
+    final hashi = draft.vocabulary.single;
+    expect(hashi.kanjiCandidates, ['橋', '箸']); // deduped, confirmed first
+    expect(hashi.region, isNotNull);
+    expect(hashi.region!.left, closeTo(0.1, 1e-9));
+    expect(hashi.region!.bottom, closeTo(0.35, 1e-9));
+  });
+
+  group('CropRegion.tryParse', () {
+    test('parses a valid [l,t,r,b] box', () {
+      final r = CropRegion.tryParse([0.1, 0.2, 0.6, 0.7])!;
+      expect(r.left, closeTo(0.1, 1e-9));
+      expect(r.top, closeTo(0.2, 1e-9));
+      expect(r.right, closeTo(0.6, 1e-9));
+      expect(r.bottom, closeTo(0.7, 1e-9));
+    });
+
+    test('clamps out-of-range values and swaps inverted edges', () {
+      final r = CropRegion.tryParse([0.6, 1.5, 0.2, -0.3])!;
+      expect(r.left, closeTo(0.2, 1e-9));
+      expect(r.right, closeTo(0.6, 1e-9));
+      expect(r.top, closeTo(0.0, 1e-9)); // -0.3 clamped to 0
+      expect(r.bottom, closeTo(1.0, 1e-9)); // 1.5 clamped to 1
+    });
+
+    test('rejects wrong arity, non-numbers, and degenerate boxes', () {
+      expect(CropRegion.tryParse(null), isNull);
+      expect(CropRegion.tryParse(const []), isNull);
+      expect(CropRegion.tryParse([0.1, 0.2, 0.3]), isNull); // 3 elements
+      expect(CropRegion.tryParse([0.1, 0.2, 'x', 0.4]), isNull);
+      expect(CropRegion.tryParse([0.5, 0.5, 0.505, 0.9]), isNull); // <2% wide
+    });
+  });
+
   test('maps a template with a slot form', () {
     final draft = draftFromExtraction(_sampleExtraction());
     final template = draft.templates.single;

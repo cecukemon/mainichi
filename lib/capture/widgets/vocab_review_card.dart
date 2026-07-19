@@ -111,6 +111,7 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
             const SizedBox(height: 6),
             WorksheetPhotoBox(
               label: '${item.kanji.isNotEmpty ? item.kanji : item.kana} · source crop',
+              region: item.region,
             ),
             const SizedBox(height: 16),
           ],

@@ -27,7 +27,8 @@ CaptureDraft _draft({String? sourceImage}) => CaptureDraft(
       sourceImage: sourceImage,
     );
 
-Future<void> _pump(WidgetTester tester, {CaptureDraft? draft}) async {
+Future<void> _pump(WidgetTester tester,
+    {CaptureDraft? draft, CropRegion? region}) async {
   final db = AppDatabase(NativeDatabase.memory());
   addTearDown(db.close);
   final container = ProviderContainer(
@@ -40,8 +41,9 @@ Future<void> _pump(WidgetTester tester, {CaptureDraft? draft}) async {
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MaterialApp(
-        home: Scaffold(body: WorksheetPhotoBox(label: 'worksheet photo')),
+      child: MaterialApp(
+        home: Scaffold(
+            body: WorksheetPhotoBox(label: 'worksheet photo', region: region)),
       ),
     ),
   );
@@ -75,6 +77,28 @@ void main() {
     await _pump(tester,
         draft: _draft(sourceImage: '/no/such/photo/anywhere.jpg'));
     expect(find.text('worksheet photo'), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
+  });
+
+  testWidgets('a region crops the photo (CustomPaint path, not Image.file)',
+      (tester) async {
+    final file = File(
+        '${Directory.systemTemp.createTempSync('mainichi_test').path}/w.png')
+      ..writeAsBytesSync(_tinyPng);
+    addTearDown(() => file.parent.deleteSync(recursive: true));
+
+    const region =
+        CropRegion(left: 0.1, top: 0.1, right: 0.6, bottom: 0.6);
+    // Real image decode needs the real event loop.
+    await tester.runAsync(() async {
+      await _pump(tester, draft: _draft(sourceImage: file.path), region: region);
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump();
+
+    expect(find.byKey(const Key('region-crop')), findsOneWidget);
+    // The whole-photo Image.file path is not used when a region is set.
     expect(find.byType(Image), findsNothing);
   });
 }

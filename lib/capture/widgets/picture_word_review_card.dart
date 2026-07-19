@@ -75,7 +75,8 @@ class _PictureWordReviewCardState extends State<PictureWordReviewCard> {
             backgroundColor: Color(0x26FF9800),
           ),
           const SizedBox(height: 14),
-          const WorksheetPhotoBox(label: 'drawing crop', height: 150),
+          WorksheetPhotoBox(
+              label: 'drawing crop', height: 150, region: item.region),
           const SizedBox(height: 6),
           Text(
             'Drawing from the worksheet — no text gloss',
