@@ -52,7 +52,7 @@ The spec §5 challenge/response mode (app asks, learner answers, engine knows th
 
 ## 5. Build order within the phase
 
-1. Shadowing mode (listening-layer addition; mic permission flow if v1 records at all).
+1. **Shadowing mode** — *done (D66, 2026-07-19).* Built as a `shadowing` flag + `AudioStatus.awaitingRepeat` hold on the existing `ListeningController` rather than a new screen; toggle on the audio bar, "Your turn" hold row with Next line / Hear it again / Done, learner-paced (no timer), no mic code. Live simulator run pending.
 2. `SttService` + read-aloud grading on the reading screen (transcript surfacing, comparator + strictness calibration).
 3. Free conversation (turn-based combined call, rejection handling, backfill hook, verdict UI design).
 

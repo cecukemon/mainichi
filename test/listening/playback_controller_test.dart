@@ -189,6 +189,92 @@ void main() {
     expect(controller.errorMessage, contains('connection'));
   });
 
+  test('shadowing: play holds after each line, advance walks on, last ends',
+      () async {
+    controller.setShadowing(true);
+    final play = controller.playAll();
+    while (player.played.isEmpty) {
+      await settle();
+    }
+    expect(controller.status, AudioStatus.playing);
+    expect(controller.currentLine, 0);
+
+    player.finishCurrent();
+    await play;
+    expect(controller.status, AudioStatus.awaitingRepeat);
+    expect(controller.currentLine, 0); // held on the spoken line
+    expect(controller.onLastLine, isFalse);
+    expect(player.played, hasLength(1)); // line 2 not started
+
+    final advance = controller.advanceShadow();
+    while (player.played.length < 2) {
+      await settle();
+    }
+    expect(controller.currentLine, 1);
+    player.finishCurrent();
+    await advance;
+    expect(controller.status, AudioStatus.awaitingRepeat); // last line holds too
+    expect(controller.onLastLine, isTrue);
+
+    await controller.advanceShadow(); // past the end: pass complete
+    expect(controller.status, AudioStatus.idle);
+    expect(controller.currentLine, isNull);
+    expect(player.played, hasLength(2));
+  });
+
+  test('shadowing: hear-it-again replays the held line and holds again',
+      () async {
+    controller.setShadowing(true);
+    final play = controller.playAll();
+    while (player.played.isEmpty) {
+      await settle();
+    }
+    player.finishCurrent();
+    await play;
+    expect(controller.status, AudioStatus.awaitingRepeat);
+
+    final repeat = controller.repeatShadowLine();
+    while (player.played.length < 2) {
+      await settle();
+    }
+    player.finishCurrent();
+    await repeat;
+    expect(player.played[1], player.played[0]);
+    expect(controller.status, AudioStatus.awaitingRepeat);
+    expect(controller.currentLine, 0);
+  });
+
+  test('turning shadowing off during the hold resets to idle', () async {
+    controller.setShadowing(true);
+    final play = controller.playAll();
+    while (player.played.isEmpty) {
+      await settle();
+    }
+    player.finishCurrent();
+    await play;
+    expect(controller.status, AudioStatus.awaitingRepeat);
+
+    controller.setShadowing(false);
+    await settle();
+    expect(controller.shadowing, isFalse);
+    expect(controller.status, AudioStatus.idle);
+    expect(controller.currentLine, isNull);
+  });
+
+  test('a margin replay while shadowing re-enters the chain at that line',
+      () async {
+    controller.setShadowing(true);
+    final playLine = controller.playLine(1);
+    while (player.played.isEmpty) {
+      await settle();
+    }
+    expect(controller.currentLine, 1);
+    player.finishCurrent();
+    await playLine;
+    expect(controller.status, AudioStatus.awaitingRepeat); // holds, not idle
+    expect(controller.currentLine, 1);
+  });
+
   test('setSpeed forwards to the player and sticks', () async {
     await controller.setSpeed(0.75);
     expect(controller.speed, 0.75);

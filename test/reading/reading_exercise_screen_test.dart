@@ -905,6 +905,35 @@ void main() {
     expect(find.text('Tap any word to look it up'), findsOneWidget);
   });
 
+  testWidgets('shadowing holds after a line, then advances on tap (D63)',
+      (tester) async {
+    final player = FakeLinePlayer();
+    await _pumpScreen(tester, player: player);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Shadowing (repeat after each line)'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Play'));
+    await tester.pumpAndSettle();
+
+    // First line played, then the hold — the learner's turn.
+    expect(player.played, ['conv_0/0.mp3']);
+    expect(find.text('Your turn — say it aloud'), findsOneWidget);
+    expect(find.text('Next line'), findsOneWidget);
+
+    await tester.tap(find.text('Next line'));
+    await tester.pumpAndSettle();
+    expect(player.played, ['conv_0/0.mp3', 'conv_0/1.mp3']);
+    // Two-line fixture: the second line is the last, so the hold now offers Done.
+    expect(find.text('Done'), findsOneWidget);
+
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('Your turn — say it aloud'), findsNothing);
+    expect(find.byTooltip('Play'), findsOneWidget); // back to idle
+  });
+
   testWidgets('a failed synthesis shows an inline audio error, text stays',
       (tester) async {
     final audio = FakeAudioStore()..error = Exception('boom');
