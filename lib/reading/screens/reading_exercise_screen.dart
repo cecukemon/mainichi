@@ -332,9 +332,19 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   bool _blurred = false;
   bool _readAloudMode = false;
 
+  /// One key per line so the active read-aloud line can be scrolled into view.
+  late final List<GlobalKey> _lineKeys;
+
+  /// The line last scrolled to, so a rebuild doesn't re-scroll the same line
+  /// mid-recording; reset to null when nothing is active so re-selecting the
+  /// same line scrolls again.
+  int? _scrolledForLine;
+
   @override
   void initState() {
     super.initState();
+    _lineKeys =
+        [for (final _ in widget.conversation.lines) GlobalKey()];
     final id = widget.conversationId;
     if (id != null) {
       _audio = ListeningController(
@@ -352,6 +362,30 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         expectedLines: [for (final l in widget.conversation.lines) l.text],
       );
     }
+  }
+
+  /// Scrolls the active read-aloud line into view when it changes, so the
+  /// line being read (and its verdict, which renders just below) is visible
+  /// even when it started below the fold. A post-frame callback because the
+  /// scroll must run after the line has laid out.
+  void _maybeScrollToActiveLine(int? activeLine) {
+    if (!_readAloudMode || activeLine == null) {
+      _scrolledForLine = null;
+      return;
+    }
+    if (activeLine == _scrolledForLine) return;
+    _scrolledForLine = activeLine;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _lineKeys[activeLine].currentContext;
+      if (ctx == null || !mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        // Upper third, leaving room below for the verdict/transcript block.
+        alignment: 0.3,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   @override
@@ -417,6 +451,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   Widget _buildBody(BuildContext context, ListeningController? audio,
       ReadAloudController? readAloud) {
     final theme = Theme.of(context);
+    _maybeScrollToActiveLine(readAloud?.activeLine);
 
     return Column(
       children: [
@@ -494,6 +529,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       children: [
         for (final (index, line) in widget.conversation.lines.indexed)
           _LineRow(
+            key: _lineKeys[index],
             line: line,
             seed: widget.seed,
             taughtForms: widget.taughtForms,
@@ -733,6 +769,7 @@ class _LineReadAloudState {
 
 class _LineRow extends StatelessWidget {
   const _LineRow({
+    super.key,
     required this.line,
     required this.seed,
     required this.taughtForms,

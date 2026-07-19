@@ -9,6 +9,9 @@
 /// result so verdicts persist as the learner works down the conversation.
 library;
 
+import 'dart:developer' as developer;
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../settings/api_key_store.dart' show ApiKeyMissing;
@@ -130,9 +133,15 @@ class ReadAloudController extends ChangeNotifier {
     } on ApiKeyMissing {
       _fail(session, index, 'No Google Cloud API key — add one in Settings.');
       return;
-    } catch (_) {
-      _fail(session, index,
-          "Couldn't reach the recognizer. Check your connection.");
+    } catch (error, stack) {
+      // Log the raw error under `speaking.transcribe` for diagnosis, then
+      // give the case-appropriate message — a rejected key or a disabled
+      // Speech-to-Text API (both 403) is not a connectivity problem, and
+      // "check your connection" would send the learner chasing the wrong
+      // thing. Only a request that never reached the server warrants it.
+      developer.log('transcription failed',
+          name: 'speaking.transcribe', error: error, stackTrace: stack);
+      _fail(session, index, _transcribeFailureMessage(error));
       return;
     }
     if (_disposed || session != _session) return;
@@ -145,6 +154,32 @@ class ReadAloudController extends ChangeNotifier {
     status = ReadAloudStatus.idle;
     activeLine = null;
     notifyListeners();
+  }
+
+  /// Maps a transcription transport failure to a learner-facing message.
+  /// A 401/403 means the key was rejected or the Cloud Speech-to-Text API is
+  /// not enabled for the project (it must be enabled separately from
+  /// Text-to-Speech, even though they share the key); only a request that
+  /// never got a response is a genuine connectivity failure.
+  String _transcribeFailureMessage(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      if (status == 401 || status == 403) {
+        return 'The recognizer rejected the key. Make sure the Cloud '
+            'Speech-to-Text API is enabled for it in Settings.';
+      }
+      if (status == 429) {
+        return 'The recognizer is busy right now. Wait a moment and try again.';
+      }
+      if (status != null && status >= 500) {
+        return 'The recognizer is temporarily overloaded. Try again shortly.';
+      }
+      if (status != null) {
+        return 'The recognizer returned an error ($status). Try again.';
+      }
+    }
+    // No response = the request never completed: offline, DNS, or timeout.
+    return "Couldn't reach the recognizer. Check your connection.";
   }
 
   void _fail(int session, int index, String message) {

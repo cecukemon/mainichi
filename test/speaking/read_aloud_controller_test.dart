@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mainichi/settings/api_key_store.dart';
 import 'package:mainichi/speaking/read_aloud_controller.dart';
@@ -113,12 +114,35 @@ void main() {
     expect(controller.errorMessage, contains('Settings'));
   });
 
-  test('a transport failure is a connection error', () async {
-    stt.error = Exception('network');
+  test('a transport failure with no response is a connection error', () async {
+    // A DioException that never reached the server (no response) is the only
+    // case that warrants "check your connection".
+    stt.error = DioException(
+      requestOptions: RequestOptions(path: 'speech:recognize'),
+      type: DioExceptionType.connectionError,
+    );
     await controller.toggleLine(0);
     await controller.toggleLine(0);
     expect(controller.status, ReadAloudStatus.error);
     expect(controller.errorMessage, contains('connection'));
+  });
+
+  test('a 403 blames the key and the Speech-to-Text API, not the connection',
+      () async {
+    // The likely real-world failure: the key is valid for TTS but the Cloud
+    // Speech-to-Text API is disabled (or the key is restricted), so STT 403s.
+    // "Check your connection" would send the learner chasing the wrong thing.
+    final options = RequestOptions(path: 'speech:recognize');
+    stt.error = DioException(
+      requestOptions: options,
+      response: Response<dynamic>(requestOptions: options, statusCode: 403),
+      type: DioExceptionType.badResponse,
+    );
+    await controller.toggleLine(0);
+    await controller.toggleLine(0);
+    expect(controller.status, ReadAloudStatus.error);
+    expect(controller.errorMessage, contains('Speech-to-Text'));
+    expect(controller.errorMessage, isNot(contains('connection')));
   });
 
   test('re-recording a line clears its previous result', () async {
