@@ -31,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -45,6 +45,21 @@ class AppDatabase extends _$AppDatabase {
             // reviewable table; existing installs get the constant's rows.
             await m.createTable(grammarGlue);
             await seedGrammarGlue();
+          }
+          if (from < 3) {
+            // v3 (conversation list): GeneratedConversations gains a `title`.
+            // No backfill — pre-title cached rows are regenerable content, so
+            // drop the cache (conversations + their link rows) and recreate it
+            // fresh with the new column, rather than surface blank titles; new
+            // generations arrive titled. Drop children first (FK order),
+            // recreate parent first. Orphaned audio dirs are left to the
+            // delete path (storage is trivial, features/conversation-list.md §3).
+            await customStatement('DROP TABLE IF EXISTS conversation_words');
+            await customStatement('DROP TABLE IF EXISTS conversation_structures');
+            await customStatement('DROP TABLE IF EXISTS generated_conversations');
+            await m.createTable(generatedConversations);
+            await m.createTable(conversationWords);
+            await m.createTable(conversationStructures);
           }
         },
         beforeOpen: (details) async {

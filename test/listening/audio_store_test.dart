@@ -38,6 +38,15 @@ class _RecordingConversations implements ConversationStore {
       throw UnimplementedError();
 
   @override
+  Future<List<ConversationSummary>> list() => throw UnimplementedError();
+
+  @override
+  Future<CachedConversation?> byId(int id) => throw UnimplementedError();
+
+  @override
+  Future<void> delete(int id) => throw UnimplementedError();
+
+  @override
   Future<void> markPracticed(int id) => throw UnimplementedError();
 }
 

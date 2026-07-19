@@ -2407,6 +2407,16 @@ class $GeneratedConversationsTable extends GeneratedConversations
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _lineCountMeta = const VerificationMeta(
     'lineCount',
   );
@@ -2457,6 +2467,7 @@ class $GeneratedConversationsTable extends GeneratedConversations
   List<GeneratedColumn> get $columns => [
     id,
     payloadJson,
+    title,
     lineCount,
     audioPath,
     createdAt,
@@ -2487,6 +2498,12 @@ class $GeneratedConversationsTable extends GeneratedConversations
       );
     } else if (isInserting) {
       context.missing(_payloadJsonMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
     }
     if (data.containsKey('line_count')) {
       context.handle(
@@ -2534,6 +2551,10 @@ class $GeneratedConversationsTable extends GeneratedConversations
         DriftSqlType.string,
         data['${effectivePrefix}payload_json'],
       )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
       lineCount: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}line_count'],
@@ -2563,6 +2584,12 @@ class GeneratedConversation extends DataClass
     implements Insertable<GeneratedConversation> {
   final int id;
   final String payloadJson;
+
+  /// Short English noun-phrase describing the scene, produced by the model at
+  /// generation time — the conversation-list row title
+  /// (features/conversation-list.md). Defaulted to '' so a payload-only insert
+  /// (older tests, edge cases) still writes; real generations always set it.
+  final String title;
   final int lineCount;
 
   /// Cached TTS audio for the listening exercise; null until synthesised.
@@ -2572,6 +2599,7 @@ class GeneratedConversation extends DataClass
   const GeneratedConversation({
     required this.id,
     required this.payloadJson,
+    required this.title,
     required this.lineCount,
     this.audioPath,
     required this.createdAt,
@@ -2582,6 +2610,7 @@ class GeneratedConversation extends DataClass
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['payload_json'] = Variable<String>(payloadJson);
+    map['title'] = Variable<String>(title);
     map['line_count'] = Variable<int>(lineCount);
     if (!nullToAbsent || audioPath != null) {
       map['audio_path'] = Variable<String>(audioPath);
@@ -2597,6 +2626,7 @@ class GeneratedConversation extends DataClass
     return GeneratedConversationsCompanion(
       id: Value(id),
       payloadJson: Value(payloadJson),
+      title: Value(title),
       lineCount: Value(lineCount),
       audioPath: audioPath == null && nullToAbsent
           ? const Value.absent()
@@ -2616,6 +2646,7 @@ class GeneratedConversation extends DataClass
     return GeneratedConversation(
       id: serializer.fromJson<int>(json['id']),
       payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      title: serializer.fromJson<String>(json['title']),
       lineCount: serializer.fromJson<int>(json['lineCount']),
       audioPath: serializer.fromJson<String?>(json['audioPath']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -2628,6 +2659,7 @@ class GeneratedConversation extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'payloadJson': serializer.toJson<String>(payloadJson),
+      'title': serializer.toJson<String>(title),
       'lineCount': serializer.toJson<int>(lineCount),
       'audioPath': serializer.toJson<String?>(audioPath),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -2638,6 +2670,7 @@ class GeneratedConversation extends DataClass
   GeneratedConversation copyWith({
     int? id,
     String? payloadJson,
+    String? title,
     int? lineCount,
     Value<String?> audioPath = const Value.absent(),
     DateTime? createdAt,
@@ -2645,6 +2678,7 @@ class GeneratedConversation extends DataClass
   }) => GeneratedConversation(
     id: id ?? this.id,
     payloadJson: payloadJson ?? this.payloadJson,
+    title: title ?? this.title,
     lineCount: lineCount ?? this.lineCount,
     audioPath: audioPath.present ? audioPath.value : this.audioPath,
     createdAt: createdAt ?? this.createdAt,
@@ -2660,6 +2694,7 @@ class GeneratedConversation extends DataClass
       payloadJson: data.payloadJson.present
           ? data.payloadJson.value
           : this.payloadJson,
+      title: data.title.present ? data.title.value : this.title,
       lineCount: data.lineCount.present ? data.lineCount.value : this.lineCount,
       audioPath: data.audioPath.present ? data.audioPath.value : this.audioPath,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -2674,6 +2709,7 @@ class GeneratedConversation extends DataClass
     return (StringBuffer('GeneratedConversation(')
           ..write('id: $id, ')
           ..write('payloadJson: $payloadJson, ')
+          ..write('title: $title, ')
           ..write('lineCount: $lineCount, ')
           ..write('audioPath: $audioPath, ')
           ..write('createdAt: $createdAt, ')
@@ -2686,6 +2722,7 @@ class GeneratedConversation extends DataClass
   int get hashCode => Object.hash(
     id,
     payloadJson,
+    title,
     lineCount,
     audioPath,
     createdAt,
@@ -2697,6 +2734,7 @@ class GeneratedConversation extends DataClass
       (other is GeneratedConversation &&
           other.id == this.id &&
           other.payloadJson == this.payloadJson &&
+          other.title == this.title &&
           other.lineCount == this.lineCount &&
           other.audioPath == this.audioPath &&
           other.createdAt == this.createdAt &&
@@ -2707,6 +2745,7 @@ class GeneratedConversationsCompanion
     extends UpdateCompanion<GeneratedConversation> {
   final Value<int> id;
   final Value<String> payloadJson;
+  final Value<String> title;
   final Value<int> lineCount;
   final Value<String?> audioPath;
   final Value<DateTime> createdAt;
@@ -2714,6 +2753,7 @@ class GeneratedConversationsCompanion
   const GeneratedConversationsCompanion({
     this.id = const Value.absent(),
     this.payloadJson = const Value.absent(),
+    this.title = const Value.absent(),
     this.lineCount = const Value.absent(),
     this.audioPath = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2722,6 +2762,7 @@ class GeneratedConversationsCompanion
   GeneratedConversationsCompanion.insert({
     this.id = const Value.absent(),
     required String payloadJson,
+    this.title = const Value.absent(),
     required int lineCount,
     this.audioPath = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2731,6 +2772,7 @@ class GeneratedConversationsCompanion
   static Insertable<GeneratedConversation> custom({
     Expression<int>? id,
     Expression<String>? payloadJson,
+    Expression<String>? title,
     Expression<int>? lineCount,
     Expression<String>? audioPath,
     Expression<DateTime>? createdAt,
@@ -2739,6 +2781,7 @@ class GeneratedConversationsCompanion
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (payloadJson != null) 'payload_json': payloadJson,
+      if (title != null) 'title': title,
       if (lineCount != null) 'line_count': lineCount,
       if (audioPath != null) 'audio_path': audioPath,
       if (createdAt != null) 'created_at': createdAt,
@@ -2749,6 +2792,7 @@ class GeneratedConversationsCompanion
   GeneratedConversationsCompanion copyWith({
     Value<int>? id,
     Value<String>? payloadJson,
+    Value<String>? title,
     Value<int>? lineCount,
     Value<String?>? audioPath,
     Value<DateTime>? createdAt,
@@ -2757,6 +2801,7 @@ class GeneratedConversationsCompanion
     return GeneratedConversationsCompanion(
       id: id ?? this.id,
       payloadJson: payloadJson ?? this.payloadJson,
+      title: title ?? this.title,
       lineCount: lineCount ?? this.lineCount,
       audioPath: audioPath ?? this.audioPath,
       createdAt: createdAt ?? this.createdAt,
@@ -2772,6 +2817,9 @@ class GeneratedConversationsCompanion
     }
     if (payloadJson.present) {
       map['payload_json'] = Variable<String>(payloadJson.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
     }
     if (lineCount.present) {
       map['line_count'] = Variable<int>(lineCount.value);
@@ -2793,6 +2841,7 @@ class GeneratedConversationsCompanion
     return (StringBuffer('GeneratedConversationsCompanion(')
           ..write('id: $id, ')
           ..write('payloadJson: $payloadJson, ')
+          ..write('title: $title, ')
           ..write('lineCount: $lineCount, ')
           ..write('audioPath: $audioPath, ')
           ..write('createdAt: $createdAt, ')
@@ -7038,6 +7087,7 @@ typedef $$GeneratedConversationsTableCreateCompanionBuilder =
     GeneratedConversationsCompanion Function({
       Value<int> id,
       required String payloadJson,
+      Value<String> title,
       required int lineCount,
       Value<String?> audioPath,
       Value<DateTime> createdAt,
@@ -7047,6 +7097,7 @@ typedef $$GeneratedConversationsTableUpdateCompanionBuilder =
     GeneratedConversationsCompanion Function({
       Value<int> id,
       Value<String> payloadJson,
+      Value<String> title,
       Value<int> lineCount,
       Value<String?> audioPath,
       Value<DateTime> createdAt,
@@ -7132,6 +7183,11 @@ class $$GeneratedConversationsTableFilterComposer
 
   ColumnFilters<String> get payloadJson => $composableBuilder(
     column: $table.payloadJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7226,6 +7282,11 @@ class $$GeneratedConversationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get lineCount => $composableBuilder(
     column: $table.lineCount,
     builder: (column) => ColumnOrderings(column),
@@ -7263,6 +7324,9 @@ class $$GeneratedConversationsTableAnnotationComposer
     column: $table.payloadJson,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
 
   GeneratedColumn<int> get lineCount =>
       $composableBuilder(column: $table.lineCount, builder: (column) => column);
@@ -7375,6 +7439,7 @@ class $$GeneratedConversationsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> payloadJson = const Value.absent(),
+                Value<String> title = const Value.absent(),
                 Value<int> lineCount = const Value.absent(),
                 Value<String?> audioPath = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -7382,6 +7447,7 @@ class $$GeneratedConversationsTableTableManager
               }) => GeneratedConversationsCompanion(
                 id: id,
                 payloadJson: payloadJson,
+                title: title,
                 lineCount: lineCount,
                 audioPath: audioPath,
                 createdAt: createdAt,
@@ -7391,6 +7457,7 @@ class $$GeneratedConversationsTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required String payloadJson,
+                Value<String> title = const Value.absent(),
                 required int lineCount,
                 Value<String?> audioPath = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -7398,6 +7465,7 @@ class $$GeneratedConversationsTableTableManager
               }) => GeneratedConversationsCompanion.insert(
                 id: id,
                 payloadJson: payloadJson,
+                title: title,
                 lineCount: lineCount,
                 audioPath: audioPath,
                 createdAt: createdAt,

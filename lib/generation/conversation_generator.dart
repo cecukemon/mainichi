@@ -159,15 +159,25 @@ class GeneratedConversation {
     required this.lines,
     required this.usedVocabIds,
     required this.usedStructureIds,
+    this.topic = '',
   });
   final List<GenLine> lines;
   final List<int> usedVocabIds;
   final List<int> usedStructureIds;
 
+  /// A short English noun-phrase describing the scene, produced by the model
+  /// alongside the conversation (e.g. "Ordering at a restaurant"). Display
+  /// metadata only — the conversation-list title (features/conversation-list.md);
+  /// it does not participate in scope validation (the authority rule is
+  /// unaffected — titles are cosmetic). Defaults to '' so pre-topic fixtures
+  /// and any legacy payload still construct.
+  final String topic;
+
   /// The same shape as [generationSchema]'s output — one format for the wire
   /// and the generated-content cache's `payloadJson` (spec §10.3).
   factory GeneratedConversation.fromJson(Map<String, dynamic> j) =>
       GeneratedConversation(
+        topic: (j['topic'] as String?) ?? '',
         lines: (j['lines'] as List).map((l) {
           final m = l as Map<String, dynamic>;
           return GenLine(
@@ -189,6 +199,7 @@ class GeneratedConversation {
       );
 
   Map<String, dynamic> toJson() => {
+        'topic': topic,
         'lines': [for (final l in lines) l.toJson()],
         'used_vocab_ids': usedVocabIds,
         'used_structure_ids': usedStructureIds,
@@ -237,8 +248,15 @@ class GenerationTruncated implements Exception {
 final Map<String, dynamic> generationSchema = {
   'type': 'object',
   'additionalProperties': false,
-  'required': ['lines', 'used_vocab_ids', 'used_structure_ids'],
+  'required': ['topic', 'lines', 'used_vocab_ids', 'used_structure_ids'],
   'properties': {
+    'topic': {
+      'type': 'string',
+      'description':
+          'A short English noun-phrase naming what the conversation is about, '
+              'about 40 characters or fewer, e.g. "Ordering at a restaurant" '
+              'or "Making weekend plans". Display metadata only.',
+    },
     'lines': {
       'type': 'array',
       'items': {
@@ -315,6 +333,8 @@ Make it one coherent question-and-answer dialogue:
   - A yes/no question about a thing (これは {noun} ですか) is answered はい、それは {noun} です / いいえ、それは {noun} ではありません, keeping the same thing in view.
   - A yes/no question about an action (…を {verb}ますか) is answered about that same action — はい、{verb in polite form} / いいえ、{verb in polite negative form} — keeping the same object in view, not switching to an unrelated action or object.
 - The exchange should read like one connected conversation, not disconnected sentences.
+
+Also report a topic: a short English noun-phrase (about 40 characters or fewer) naming what the conversation is about, e.g. "Ordering at a restaurant" or "Making weekend plans". It is display metadata only — it does not relax scope, and it need not be spelled with any particular vocabulary word.
 
 For every line report: speaker_name_id and speaker_surface (which name is speaking), text (the full line), structure_id (which listed structure it instantiates, or 0 if it is a recombined sentence), and tokens (the line split into words). Each token's vocab_id is the id of the vocabulary entry it comes from, or 0 for grammatical glue (particles like は/を, the copula です, conjugation endings, the question marker か). A name used in the text is vocabulary — tag it with its id.
 ''';

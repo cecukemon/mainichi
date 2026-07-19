@@ -181,6 +181,12 @@ class GeneratedConversations extends Table {
 
   TextColumn get payloadJson => text()();
 
+  /// Short English noun-phrase describing the scene, produced by the model at
+  /// generation time — the conversation-list row title
+  /// (features/conversation-list.md). Defaulted to '' so a payload-only insert
+  /// (older tests, edge cases) still writes; real generations always set it.
+  TextColumn get title => text().withDefault(const Constant(''))();
+
   IntColumn get lineCount => integer()();
 
   /// Cached TTS audio for the listening exercise; null until synthesised.

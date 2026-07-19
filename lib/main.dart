@@ -6,6 +6,7 @@ import 'capture/screens/photo_import_screen.dart';
 import 'data/connection.dart';
 import 'data/database.dart';
 import 'reading/reading_providers.dart' show ReadingStart;
+import 'reading/screens/conversation_list_screen.dart';
 import 'reading/screens/reading_exercise_screen.dart';
 import 'settings/api_key_store.dart';
 import 'settings/screens/settings_screen.dart';
@@ -76,9 +77,7 @@ class HomeScreen extends ConsumerWidget {
             OutlinedButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => const ReadingExerciseScreen(
-                    start: ReadingStart.reread,
-                  ),
+                  builder: (_) => const ConversationListScreen(),
                 ),
               ),
               icon: const Icon(Icons.history_outlined),

@@ -132,6 +132,49 @@ void main() {
       expect(convo.usedVocabIds, [4]);
     });
 
+    test('parses the topic and it round-trips through toJson/fromJson', () {
+      final convo = parseGenerationResponse(wrap({
+        'topic': 'Ordering at a restaurant',
+        'lines': [
+          {
+            'speaker_name_id': 20,
+            'speaker_surface': 'すずき',
+            'text': 'これは ほん です',
+            'structure_id': 0,
+            'tokens': [
+              {'surface': 'ほん', 'vocab_id': 4},
+            ],
+          },
+        ],
+        'used_vocab_ids': [4],
+        'used_structure_ids': [],
+      }));
+      expect(convo.topic, 'Ordering at a restaurant');
+      // The topic is display metadata carried in the cache payload too.
+      final roundTripped =
+          GeneratedConversation.fromJson(convo.toJson());
+      expect(roundTripped.topic, 'Ordering at a restaurant');
+    });
+
+    test('a payload without a topic still parses (topic defaults empty)', () {
+      final convo = parseGenerationResponse(wrap({
+        'lines': [
+          {
+            'speaker_name_id': 20,
+            'speaker_surface': 'すずき',
+            'text': 'ほん',
+            'structure_id': 0,
+            'tokens': [
+              {'surface': 'ほん', 'vocab_id': 4},
+            ],
+          },
+        ],
+        'used_vocab_ids': [4],
+        'used_structure_ids': [],
+      }));
+      expect(convo.topic, '');
+    });
+
     test('throws on refusal', () {
       expect(
         () => parseGenerationResponse(

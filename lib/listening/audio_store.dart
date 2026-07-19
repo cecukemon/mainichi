@@ -29,6 +29,11 @@ abstract class AudioStore {
     required int conversationId,
     required List<LineAudioSpec> lines,
   });
+
+  /// Removes a conversation's on-disk audio directory (the delete path,
+  /// features/conversation-list.md). A never-synthesised / already-gone
+  /// directory is a silent no-op.
+  Future<void> deleteAudio({required int conversationId});
 }
 
 class ConversationAudioStore implements AudioStore {
@@ -79,5 +84,13 @@ class ConversationAudioStore implements AudioStore {
       }
     }
     return paths;
+  }
+
+  @override
+  Future<void> deleteAudio({required int conversationId}) async {
+    final root = await rootDir();
+    final dir =
+        Directory(p.join(root.path, 'audio', 'conv_$conversationId'));
+    if (await dir.exists()) await dir.delete(recursive: true);
   }
 }

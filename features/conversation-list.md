@@ -58,4 +58,17 @@ Stored in a new `title` column on `GeneratedConversations`.
 
 ## 6. Status
 
-`[planned]` — spec written 2026-07-19. Awaiting Claude Design mockups, then implementation.
+`[done]` (2026-07-19) — implemented against the Claude Design mockups. The
+generation schema gained a required `topic` field (`generationInstructions` +
+`generationSchema`), carried on `GeneratedConversation.topic` and stored in the
+new `GeneratedConversations.title` column (schema v3; the migration drops the
+pre-title cache and its link rows — no backfill, §3). `ConversationStore` gained
+`list()` (newest-first summaries), `byId()`, and `delete()` (row + link-row
+cascade); `AudioStore.deleteAudio()` removes the on-disk `audio/conv_<id>`
+directory. New `ConversationListScreen` (`lib/reading/screens/`) with the
+`conversationListProvider` notifier: swipe-to-delete with snackbar-undo
+(optimistic — the DB/disk removal commits only when the undo window lapses),
+the empty state, and a row tap that opens the reading exercise via the new
+`ReadingStart.conversation` entry (marks `lastPracticedAt`; **Next** generates
+fresh, not a playlist). The home "Re-read a previous one" button now navigates
+here; the generation-failure error state keeps its one-tap LRU reread.

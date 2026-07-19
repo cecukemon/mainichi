@@ -25,11 +25,20 @@ import '../reading_providers.dart';
 import '../word_lookup_sheet.dart';
 
 class ReadingExerciseScreen extends ConsumerStatefulWidget {
-  const ReadingExerciseScreen({super.key, this.start = ReadingStart.generate});
+  const ReadingExerciseScreen({
+    super.key,
+    this.start = ReadingStart.generate,
+    this.conversationId,
+  }) : assert(start != ReadingStart.conversation || conversationId != null,
+            'ReadingStart.conversation needs a conversationId');
 
-  /// Whether the session opens by generating a fresh conversation or by
-  /// rereading a cached one — chosen at the home screen's two entrypoints.
+  /// How the session opens: generate a fresh conversation, reread the
+  /// least-recently-practiced cached one, or open the specific cached
+  /// [conversationId] picked from the conversation list.
   final ReadingStart start;
+
+  /// The cached row to open, when [start] is [ReadingStart.conversation].
+  final int? conversationId;
 
   @override
   ConsumerState<ReadingExerciseScreen> createState() =>
@@ -39,9 +48,12 @@ class ReadingExerciseScreen extends ConsumerStatefulWidget {
 class _ReadingExerciseScreenState extends ConsumerState<ReadingExerciseScreen> {
   bool _showFurigana = true; // default on (spec §4)
 
+  ReadingRequest get _request =>
+      (start: widget.start, conversationId: widget.conversationId);
+
   @override
   Widget build(BuildContext context) {
-    final session = ref.watch(readingSessionProvider(widget.start));
+    final session = ref.watch(readingSessionProvider(_request));
 
     return Scaffold(
       appBar: AppBar(
@@ -63,7 +75,7 @@ class _ReadingExerciseScreenState extends ConsumerState<ReadingExerciseScreen> {
       body: switch (session.phase) {
         ReadingPhase.loading => const _LoadingView(),
         ReadingPhase.error => _ErrorView(
-            start: widget.start,
+            request: _request,
             message: session.errorMessage,
             hasCachedFallback: session.hasCachedFallback,
             candidates: session.candidates,
@@ -74,7 +86,7 @@ class _ReadingExerciseScreenState extends ConsumerState<ReadingExerciseScreen> {
         ReadingPhase.ready => _ConversationView(
             key: ValueKey(session.conversationId ??
                 identityHashCode(session.conversation)),
-            start: widget.start,
+            request: _request,
             conversation: session.conversation!,
             seed: session.seed!,
             conversationId: session.conversationId,
@@ -114,13 +126,13 @@ class _LoadingView extends StatelessWidget {
 
 class _ErrorView extends ConsumerWidget {
   const _ErrorView({
-    required this.start,
+    required this.request,
     required this.message,
     required this.hasCachedFallback,
     this.candidates = const [],
   });
 
-  final ReadingStart start;
+  final ReadingRequest request;
   final String message;
   final bool hasCachedFallback;
 
@@ -135,7 +147,7 @@ class _ErrorView extends ConsumerWidget {
   /// instead (D56) — same framing, defaulting to a GrammarGlue commit, with
   /// the word card one toggle away.
   void _openBackfillSheet(BuildContext context, WidgetRef ref, String surface) {
-    final notifier = ref.read(readingSessionProvider(start).notifier);
+    final notifier = ref.read(readingSessionProvider(request).notifier);
     final draft =
         ref.read(scopeBackfillProvider).draftForSurface(surface);
     final isSingleChar = surface.runes.length == 1;
@@ -260,14 +272,14 @@ class _ErrorView extends ConsumerWidget {
             const SizedBox(height: 24),
             FilledButton(
               onPressed: () =>
-                  ref.read(readingSessionProvider(start).notifier).loadNext(),
+                  ref.read(readingSessionProvider(request).notifier).loadNext(),
               child: const Text('Try again'),
             ),
             if (hasCachedFallback) ...[
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () => ref
-                    .read(readingSessionProvider(start).notifier)
+                    .read(readingSessionProvider(request).notifier)
                     .readCached(),
                 child: const Text('Reread an earlier one'),
               ),
@@ -287,7 +299,7 @@ class _ErrorView extends ConsumerWidget {
 class _ConversationView extends ConsumerStatefulWidget {
   const _ConversationView({
     super.key,
-    required this.start,
+    required this.request,
     required this.conversation,
     required this.seed,
     required this.conversationId,
@@ -295,7 +307,7 @@ class _ConversationView extends ConsumerStatefulWidget {
     required this.showFurigana,
   });
 
-  final ReadingStart start;
+  final ReadingRequest request;
   final GeneratedConversation conversation;
   final GenerationSeed seed;
 
@@ -378,13 +390,17 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                   width: double.infinity,
                   child: FilledButton(
                     // In reread mode, Next stays in the cache (rotating to the
-                    // next least-recently-practiced one) rather than generating
-                    // — the whole point of that entrypoint.
+                    // next least-recently-practiced one) rather than
+                    // generating — the whole point of that entrypoint. Opening
+                    // one conversation from the list is not a playlist: its
+                    // Next generates fresh, exactly like the generate entry
+                    // (features/conversation-list.md §2).
                     onPressed: () {
-                      final notifier =
-                          ref.read(readingSessionProvider(widget.start).notifier);
-                      switch (widget.start) {
+                      final notifier = ref
+                          .read(readingSessionProvider(widget.request).notifier);
+                      switch (widget.request.start) {
                         case ReadingStart.generate:
+                        case ReadingStart.conversation:
                           notifier.loadNext();
                         case ReadingStart.reread:
                           notifier.readCached();

@@ -208,6 +208,27 @@ class FakeConversationStore implements ConversationStore {
       : CachedConversation(id: 0, conversation: saved.first);
 
   @override
+  Future<List<ConversationSummary>> list() async => [
+        for (final (i, c) in saved.indexed)
+          ConversationSummary(
+            id: i,
+            title: c.topic,
+            createdAt: DateTime(2026, 7, 7),
+            lastPracticedAt: null,
+            lineCount: c.lines.length,
+          ),
+      ];
+
+  @override
+  Future<CachedConversation?> byId(int id) async =>
+      id >= 0 && id < saved.length
+          ? CachedConversation(id: id, conversation: saved[id])
+          : null;
+
+  @override
+  Future<void> delete(int id) async {}
+
+  @override
   Future<void> markPracticed(int id) async => practiced.add(id);
 
   @override
@@ -234,6 +255,12 @@ class FakeAudioStore implements AudioStore {
     requests.add(lines);
     return [for (var i = 0; i < lines.length; i++) 'conv_$conversationId/$i.mp3'];
   }
+
+  final List<int> deleted = [];
+
+  @override
+  Future<void> deleteAudio({required int conversationId}) async =>
+      deleted.add(conversationId);
 }
 
 class FakeLinePlayer implements LineAudioPlayer {
@@ -267,6 +294,7 @@ Future<FakeGenerationService> _pumpScreen(
   FakeLinePlayer? player,
   FakeScopeBackfillService? backfill,
   ReadingStart start = ReadingStart.generate,
+  int? conversationId,
 }) async {
   final service = FakeGenerationService(results ?? [_conversation]);
   await tester.pumpWidget(
@@ -284,7 +312,10 @@ Future<FakeGenerationService> _pumpScreen(
         scopeBackfillProvider
             .overrideWithValue(backfill ?? FakeScopeBackfillService()),
       ],
-      child: MaterialApp(home: ReadingExerciseScreen(start: start)),
+      child: MaterialApp(
+        home: ReadingExerciseScreen(
+            start: start, conversationId: conversationId),
+      ),
     ),
   );
   return service;
@@ -770,6 +801,28 @@ void main() {
 
     expect(service.calls, 0); // still no generation
     expect(cache.practiced, [0, 0]); // rotated again
+  });
+
+  testWidgets('conversation entry opens the picked cached row, marks it '
+      'practiced, and Next generates fresh', (tester) async {
+    // saved[0] is the picked conversation; byId(0) returns it.
+    final cache = FakeConversationStore()..saved.add(_conversation);
+    final service = await _pumpScreen(tester,
+        cache: cache,
+        start: ReadingStart.conversation,
+        conversationId: 0);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('べません'), findsOneWidget); // the picked conversation
+    expect(service.calls, 0); // opening a row never generates
+    expect(cache.practiced, [0]); // lastPracticedAt stamped on open
+
+    // Next is fresh generation here (not a playlist) — features/conversation-list.md.
+    await tester.tap(find.text('Next'));
+    await tester.pump();
+    await tester.pump();
+    expect(service.calls, 1);
   });
 
   testWidgets('reread entry with an empty cache explains itself',

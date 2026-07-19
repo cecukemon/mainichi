@@ -5,8 +5,10 @@ import 'package:mainichi/data/database.dart' hide GeneratedConversation;
 import 'package:mainichi/data/enums.dart';
 import 'package:mainichi/generation/conversation_generator.dart';
 
-GeneratedConversation _convo(String text, {int structureId = 0}) =>
+GeneratedConversation _convo(String text,
+        {int structureId = 0, String topic = ''}) =>
     GeneratedConversation(
+      topic: topic,
       lines: [
         GenLine(
           speakerNameId: 20,
@@ -109,5 +111,62 @@ void main() {
 
     expect(await db.select(db.conversationWords).get(), isEmpty);
     expect((await store.leastRecentlyPracticed())!.id, id);
+  });
+
+  test('save stores the topic as the row title', () async {
+    final id = await store.save(_convo('すしです。', topic: 'Ordering food'),
+        wordIds: {wordId}, structureIds: {});
+
+    final row = await (db.select(db.generatedConversations)
+          ..where((c) => c.id.equals(id)))
+        .getSingle();
+    expect(row.title, 'Ordering food');
+  });
+
+  test('list returns summaries newest-first with title and stamps', () async {
+    final first = await store.save(_convo('a', topic: 'First'),
+        wordIds: {wordId}, structureIds: {});
+    final second = await store.save(_convo('b', topic: 'Second'),
+        wordIds: {wordId}, structureIds: {});
+
+    final rows = await store.list();
+    // Both were saved "now" (ticking clock); newest createdAt first, and the
+    // id tiebreak keeps the later insert ahead.
+    expect(rows.map((r) => r.id).toList(), [second, first]);
+    expect(rows.first.title, 'Second');
+    expect(rows.first.lineCount, 1);
+    expect(rows.first.lastPracticedAt, isNotNull);
+  });
+
+  test('byId round-trips the full payload; unknown id is null', () async {
+    final id = await store.save(_convo('すしです。', topic: 'Lunch'),
+        wordIds: {wordId}, structureIds: {});
+
+    final cached = await store.byId(id);
+    expect(cached!.conversation.topic, 'Lunch');
+    expect(cached.conversation.lines.single.text, 'すしです。');
+    expect(await store.byId(9999), isNull);
+  });
+
+  test('delete removes the conversation and cascades its link rows', () async {
+    final id = await store.save(_convo('すしです。', structureId: 1, topic: 'X'),
+        wordIds: {wordId}, structureIds: {structureId});
+    expect(await db.select(db.conversationWords).get(), hasLength(1));
+    expect(await db.select(db.conversationStructures).get(), hasLength(1));
+
+    await store.delete(id);
+
+    expect(await store.byId(id), isNull);
+    expect(await db.select(db.conversationWords).get(), isEmpty);
+    expect(await db.select(db.conversationStructures).get(), isEmpty);
+    // The linked word/structure themselves survive.
+    expect(await db.select(db.words).get(), hasLength(1));
+    expect(await db.select(db.structures).get(), hasLength(1));
+  });
+
+  test('delete of an unknown id is a no-op', () async {
+    await store.save(_convo('a', topic: 'X'), wordIds: {wordId}, structureIds: {});
+    await store.delete(9999);
+    expect(await store.list(), hasLength(1));
   });
 }

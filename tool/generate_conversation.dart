@@ -57,6 +57,7 @@ Future<void> main(List<String> args) async {
     }
     final convo = parseGenerationResponse(response);
 
+    if (convo.topic.isNotEmpty) stdout.writeln('topic: ${convo.topic}\n');
     stdout.writeln(renderConversation(convo, seed));
 
     final report = validateScope(convo, seed);

@@ -48,22 +48,31 @@ final scopeBackfillProvider = Provider<ScopeBackfillService>(
 );
 
 /// Which action the session runs on entry: generate a fresh conversation
-/// (D39, the default), or reread the least-recently-practiced cached one
-/// (features/generated-cache.md). The home screen offers both directly, so
-/// reread is no longer only reachable from the generation-failure fallback.
-enum ReadingStart { generate, reread }
+/// (D39, the default), reread the least-recently-practiced cached one
+/// (features/generated-cache.md), or open one specific cached conversation
+/// picked from the conversation list (features/conversation-list.md). The
+/// home screen offers generate and the list directly; reread stays the
+/// generation-failure fallback and the list's own Next.
+enum ReadingStart { generate, reread, conversation }
+
+/// A reading-session request: the entry action plus, for
+/// [ReadingStart.conversation], which cached row to open. A record so the
+/// provider family keys on it by value — two different picked conversations
+/// get independent autoDispose sessions.
+typedef ReadingRequest = ({ReadingStart start, int? conversationId});
 
 /// autoDispose: leaving the screen ends the session; re-entering starts a
 /// fresh one (no stale conversation flashing before the new load). Keyed on
-/// [ReadingStart] so the two home entrypoints get independent sessions.
+/// the [ReadingRequest] so the home entrypoints and each picked conversation
+/// get independent sessions.
 final readingSessionProvider = StateNotifierProvider.autoDispose.family<
-    ReadingSessionNotifier, ReadingSessionState, ReadingStart>(
-  (ref, start) => ReadingSessionNotifier(
+    ReadingSessionNotifier, ReadingSessionState, ReadingRequest>(
+  (ref, request) => ReadingSessionNotifier(
     ref.watch(seedSourceProvider),
     ref.watch(generationServiceProvider),
     ref.watch(conversationStoreProvider),
     ref.watch(scopeBackfillProvider),
-    start: start,
+    request: request,
   ),
 );
 
@@ -134,13 +143,15 @@ class ReadingSessionState {
 
 class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
   ReadingSessionNotifier(this._seeds, this._service, this._cache, this._backfill,
-      {ReadingStart start = ReadingStart.generate})
+      {required ReadingRequest request})
       : super(const ReadingSessionState.loading()) {
-    switch (start) {
+    switch (request.start) {
       case ReadingStart.generate:
         loadNext();
       case ReadingStart.reread:
         readCached();
+      case ReadingStart.conversation:
+        readSpecific(request.conversationId!);
     }
   }
 
@@ -231,6 +242,30 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
           conversationId: cached.id);
     } catch (_) {
       await _fail("Couldn't load a cached conversation.");
+    }
+  }
+
+  /// Opens one specific cached conversation, picked from the conversation
+  /// list (features/conversation-list.md). Renders against the live store like
+  /// any reread and stamps `lastPracticedAt`; unlike reread, **Next** from
+  /// here generates fresh (the list seeds the first conversation, it is not a
+  /// playlist) — see the screen's Next handler.
+  Future<void> readSpecific(int id) async {
+    state = const ReadingSessionState.loading();
+    try {
+      final seed = await _seeds.loadGenerationSeed();
+      final cached = await _cache.byId(id);
+      if (cached == null) {
+        // Deleted between listing and tapping — rare, but honest about it.
+        await _fail('That conversation is no longer available.');
+        return;
+      }
+      await _cache.markPracticed(id);
+      if (!mounted) return;
+      state = ReadingSessionState.ready(cached.conversation, seed,
+          conversationId: id);
+    } catch (_) {
+      await _fail("Couldn't load that conversation.");
     }
   }
 
