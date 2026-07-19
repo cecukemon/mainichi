@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -365,6 +366,68 @@ void main() {
 
     expect(service.calls, 2);
     expect(find.text('べません'), findsOneWidget);
+  });
+
+  // The catch-all in loadNext no longer blames the connection for every
+  // failure — it classifies the caught error so the intermittent-failure
+  // question can be told apart on-screen (features/reading-exercise.md).
+  DioException dioStatus(int status) => DioException(
+        requestOptions: RequestOptions(path: '/'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/'),
+          statusCode: status,
+        ),
+        type: DioExceptionType.badResponse,
+      );
+
+  testWidgets('connection failure keeps the check-your-connection message',
+      (tester) async {
+    await _pumpScreen(tester, results: [
+      DioException(
+        requestOptions: RequestOptions(path: '/'),
+        type: DioExceptionType.connectionError,
+      ),
+    ]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text("Couldn't generate that one"), findsOneWidget);
+    expect(find.textContaining('Check your connection'), findsOneWidget);
+  });
+
+  testWidgets('a 429 reads as busy, not a connection problem', (tester) async {
+    await _pumpScreen(tester, results: [dioStatus(429)]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('rate limit'), findsOneWidget);
+    expect(find.textContaining('Check your connection'), findsNothing);
+  });
+
+  testWidgets('a 5xx reads as overloaded', (tester) async {
+    await _pumpScreen(tester, results: [dioStatus(529)]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('overloaded'), findsOneWidget);
+  });
+
+  testWidgets('a 401 points at the API key', (tester) async {
+    await _pumpScreen(tester, results: [dioStatus(401)]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('API key'), findsOneWidget);
+  });
+
+  testWidgets('an unparseable reply reads as a bad response, not offline',
+      (tester) async {
+    await _pumpScreen(tester, results: [const FormatException('bad json')]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('could not be read'), findsOneWidget);
+    expect(find.textContaining('Check your connection'), findsNothing);
   });
 
   testWidgets('out-of-scope output is discarded, never shown', (tester) async {

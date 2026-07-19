@@ -7,6 +7,7 @@ library;
 
 import 'dart:developer' as developer;
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meta/meta.dart';
 
@@ -187,9 +188,20 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
     } on GenerationRefused {
       await _fail(
           'The generator declined that one. You can try again, or head back.');
-    } catch (_) {
-      await _fail(
-          "Couldn't reach the generator. Check your connection and try again.");
+    } catch (error, stack) {
+      // Everything that isn't a missing key, a refusal, or an out-of-scope
+      // result lands here: connectivity, server-side HTTP status, a timeout,
+      // or an unparseable reply. The old catch-all blamed the connection for
+      // all of them and dropped the exception. Log the real error under
+      // `reading.generate` and give the case-appropriate message so the
+      // intermittent-failure question can be diagnosed, not guessed.
+      developer.log(
+        'generation failed: $error',
+        name: 'reading.generate',
+        error: error,
+        stackTrace: stack,
+      );
+      await _fail(_generationFailureMessage(error));
     }
   }
 
@@ -302,4 +314,39 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
       candidates: candidates,
     );
   }
+}
+
+/// Maps a generation transport/parse failure to a learner-facing message.
+/// Only a genuine connectivity failure warrants "check your connection"; a
+/// server-side status (rejected key, rate limit, overload) and a reply that
+/// couldn't be parsed each get their own honest message. The raw error is
+/// logged separately (under `reading.generate`) for diagnosis; this only
+/// picks the wording.
+String _generationFailureMessage(Object error) {
+  if (error is DioException) {
+    final status = error.response?.statusCode;
+    if (status != null) {
+      // Reached the generator; it answered with an error status.
+      if (status == 401 || status == 403) {
+        return 'The generator rejected the API key. Check it in Settings.';
+      }
+      if (status == 429) {
+        return 'The generator is busy right now (rate limit). '
+            'Wait a moment and try again.';
+      }
+      if (status >= 500) {
+        return 'The generator is temporarily overloaded. '
+            'Try again in a moment.';
+      }
+      return 'The generator returned an error ($status). '
+          'You can try again, or head back.';
+    }
+    // No response = the request never completed: offline, DNS, or timeout.
+    return "Couldn't reach the generator. "
+        'Check your connection and try again.';
+  }
+  // Reached and answered, but the reply couldn't be read — truncated or
+  // malformed JSON, a missing text block, or an unexpected shape.
+  return 'The generator replied, but the response could not be read. '
+      'You can try again, or head back.';
 }
