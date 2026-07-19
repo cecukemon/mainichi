@@ -27,14 +27,16 @@ A playback mode on the existing listening layer: play line → pause → the lea
 - Optionally records the learner (for self-playback comparison), but even that can wait; the mode is useful with zero mic code.
 - Known limitation, accepted: produces no data for phase 5's SRS and tests imitation, not production. That's what the higher rungs are for.
 
-## 3. Mode 2 — Read-aloud (first graded mode)
+## 3. Mode 2 — Read-aloud (first graded mode) — *implemented, D67*
 
-The learner reads the current conversation aloud, line by line; the app records, sends to Google Cloud Speech-to-Text, and compares the transcript against the expected line. This is exactly the tractable shape spec §5 counted on: **the expected text is known** — the line's kana, assembled by the same `kanaLine` authority the TTS speaks from (`lib/listening/line_audio.dart`), so grading is transcript-vs-expected comparison, not open-ended judgment.
+The learner reads the current conversation aloud, line by line; the app records, sends to Google Cloud Speech-to-Text, and compares the transcript against the expected line. This is the tractable shape spec §5 counted on: **the expected text is known**, so grading is transcript-vs-expected comparison, not open-ended judgment.
 
-- **Verdict = "STT heard the right words"** (D64), shown per line with the raw transcript always visible. Match strictness (exact kana? normalized? token-level partial credit?) is the calibration loop the spec warned about — expect tuning, keep the comparator a small pure function with its own tests.
+- **Verdict = "STT heard the right words"** (D64), shown per line as one of match / close / mismatch, with the raw transcript always visible beneath it. Match strictness is the calibration loop the spec warned about — the comparator (`gradeReadAloud`, `lib/speaking/read_aloud_grader.dart`) is a small pure function with its own tests and two documented threshold knobs (0.95 match / 0.7 close over normalized Levenshtein similarity), untuned until there's real spoken data.
+- **What it compares — the load-bearing call:** Google STT for Japanese returns ordinary orthography (kanji+kana), *not* the kana the TTS speaks from. So the grader compares against each line's written `text`, **not** its `kanaLine`. Known limitation: a reading-correct but orthography-different transcript (お寿司 vs すし, 寿司 vs すし) can score below a strict match purely on character choice. This is precisely why the raw transcript is always surfaced (spec §5): the verdict is a hint, the transcript is the truth, and an orthography-only miss reads as "close — check what it heard", not a hard fail.
 - Side value: with furigana off, reading aloud tests kanji **readings** — a skill no other exercise checks actively.
-- STT goes behind a `SttService` interface mirroring `TtsService` (dio, key fresh per call). Google Cloud TTS and STT accept the same API key, so the existing Google key slot in settings is reused — no third slot unless a restricted key forces one.
-- Mic capture via the `record` package (spec §4 as planned); recordings are transient input, not stored content — no analogue of the audio file store.
+- STT is behind an `SttService` interface mirroring `TtsService` (`lib/speaking/stt_service.dart`, dio, key fresh per call). Cloud TTS and STT take the same API key, so the existing Google key slot is reused — no third slot.
+- Mic capture is behind a `SpeechRecorder` interface (`lib/speaking/speech_recorder.dart`) over the `record` package; recordings are transient WAV input, deleted after transcription — no audio file store analogue. iOS mic permission declared in Info.plist.
+- **UI:** a fourth audio-bar toggle (mic icon), mutually exclusive with shadowing and listening-mode. In read-aloud mode each line's margin shows a mic (→ stop while recording, spinner while transcribing) in place of the replay control, and the verdict badge + "Heard: …" transcript renders under the line. `ReadAloudController` (`lib/speaking/read_aloud_controller.dart`) runs one line at a time, keyed per conversation like the listening controller.
 
 ## 4. Mode 3 — Free conversation (the destination)
 
@@ -53,14 +55,14 @@ The spec §5 challenge/response mode (app asks, learner answers, engine knows th
 ## 5. Build order within the phase
 
 1. **Shadowing mode** — *done (D66, 2026-07-19).* Built as a `shadowing` flag + `AudioStatus.awaitingRepeat` hold on the existing `ListeningController` rather than a new screen; toggle on the audio bar, "Your turn" hold row with Next line / Hear it again / Done, learner-paced (no timer), no mic code. Live simulator run pending.
-2. `SttService` + read-aloud grading on the reading screen (transcript surfacing, comparator + strictness calibration).
+2. **Read-aloud** — *done (D67, 2026-07-19).* `SttService` + `SpeechRecorder` behind interfaces (Google key slot reused, `record` package), pure `gradeReadAloud` comparator, per-line mic + verdict/transcript UI on the reading screen. Match strictness untuned by design; live device run (real mic + key) pending.
 3. Free conversation (turn-based combined call, rejection handling, backfill hook, verdict UI design).
 
 Each rung is independently shippable and independently useful; there is no need to commit to rung 3's open questions before rung 1 exists.
 
 ## 6. Open questions (deferred, not blocking rung 1)
 
-- Read-aloud match strictness — the spec §9 calibration item; needs real use.
+- Read-aloud match strictness — the spec §9 calibration item; the two thresholds in `read_aloud_grader.dart` are the knobs, untuned until there's real spoken data. Related: the orthography-vs-kana comparison limitation (§3) — watch whether reading-correct-but-orthography-different transcripts produce annoying false "close"/"mismatch" verdicts in practice.
 - Free-conversation verdict presentation (per-turn vs. summary) and conversation length/ending.
 - Whether shadowing should record for self-comparison playback, and if so whether recordings are kept at all.
 - Pitch-accent feedback — research direction only; revisit if the intelligibility proxy proves unsatisfying.

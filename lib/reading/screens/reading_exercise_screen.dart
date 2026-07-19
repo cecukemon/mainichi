@@ -20,6 +20,9 @@ import '../../generation/conversation_generator.dart';
 import '../../listening/line_audio.dart';
 import '../../listening/listening_providers.dart';
 import '../../listening/playback_controller.dart';
+import '../../speaking/read_aloud_controller.dart';
+import '../../speaking/read_aloud_grader.dart';
+import '../../speaking/speaking_providers.dart';
 import '../furigana_text.dart';
 import '../glue_review_sheet.dart';
 import '../line_display.dart';
@@ -325,7 +328,9 @@ class _ConversationView extends ConsumerStatefulWidget {
 
 class _ConversationViewState extends ConsumerState<_ConversationView> {
   ListeningController? _audio;
+  ReadAloudController? _readAloud;
   bool _blurred = false;
+  bool _readAloudMode = false;
 
   @override
   void initState() {
@@ -338,28 +343,79 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         conversationId: id,
         lines: lineAudioSpecs(widget.conversation, widget.seed),
       );
+      // Read-aloud grades against each line's written text (orthography, not
+      // kana — see read_aloud_grader.dart). Gated on the same conversationId
+      // as audio: both live on the player row.
+      _readAloud = ReadAloudController(
+        recorder: ref.read(speechRecorderFactoryProvider)(),
+        stt: ref.read(sttServiceProvider),
+        expectedLines: [for (final l in widget.conversation.lines) l.text],
+      );
     }
   }
 
   @override
   void dispose() {
     _audio?.dispose();
+    _readAloud?.dispose();
     super.dispose();
+  }
+
+  // The three practice modes are mutually exclusive: you can't read aloud
+  // blurred text, and recording while audio plays is incoherent. Turning one
+  // on backs the others out (cancelling any in-flight recording).
+  void _toggleReadAloud() {
+    setState(() {
+      _readAloudMode = !_readAloudMode;
+      if (_readAloudMode) {
+        _blurred = false;
+        _audio?.setShadowing(false);
+        _audio?.stop();
+      } else {
+        _readAloud?.cancel();
+      }
+    });
+  }
+
+  void _toggleBlur() {
+    setState(() {
+      _blurred = !_blurred;
+      if (_blurred) {
+        _readAloudMode = false;
+        _readAloud?.cancel();
+      }
+    });
+  }
+
+  void _toggleShadowing() {
+    final audio = _audio;
+    if (audio == null) return;
+    final turningOn = !audio.shadowing;
+    audio.setShadowing(turningOn);
+    if (turningOn && _readAloudMode) {
+      setState(() {
+        _readAloudMode = false;
+        _readAloud?.cancel();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final audio = _audio;
-    if (audio == null) return _buildBody(context, null);
+    final readAloud = _readAloud;
+    final listenables = <Listenable>[?audio, ?readAloud];
+    if (listenables.isEmpty) return _buildBody(context, null, null);
     // The body must be constructed inside the builder — a prebuilt widget
     // instance would be seen as unchanged and never repainted on notify.
     return ListenableBuilder(
-      listenable: audio,
-      builder: (context, _) => _buildBody(context, audio),
+      listenable: Listenable.merge(listenables),
+      builder: (context, _) => _buildBody(context, audio, readAloud),
     );
   }
 
-  Widget _buildBody(BuildContext context, ListeningController? audio) {
+  Widget _buildBody(BuildContext context, ListeningController? audio,
+      ReadAloudController? readAloud) {
     final theme = Theme.of(context);
 
     return Column(
@@ -368,9 +424,12 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
           _AudioBar(
             controller: audio,
             blurred: _blurred,
-            onToggleBlur: () => setState(() => _blurred = !_blurred),
+            onToggleBlur: _toggleBlur,
+            onToggleShadowing: _toggleShadowing,
+            readAloudMode: _readAloudMode,
+            onToggleReadAloud: readAloud == null ? null : _toggleReadAloud,
           ),
-        Expanded(child: _buildLines(audio)),
+        Expanded(child: _buildLines(audio, readAloud)),
         SafeArea(
           top: false,
           child: Padding(
@@ -379,11 +438,13 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _blurred
-                      ? 'Listening mode — tap the text to reveal it'
-                      : widget.showFurigana
-                          ? 'Tap any word to look it up'
-                          : "Furigana hidden — tap a word if it hasn't stuck",
+                  _readAloudMode
+                      ? 'Read-aloud — tap a line’s mic, read it, tap again'
+                      : _blurred
+                          ? 'Listening mode — tap the text to reveal it'
+                          : widget.showFurigana
+                              ? 'Tap any word to look it up'
+                              : "Furigana hidden — tap a word if it hasn't stuck",
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
@@ -426,7 +487,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     );
   }
 
-  Widget _buildLines(ListeningController? audio) {
+  Widget _buildLines(ListeningController? audio, ReadAloudController? readAloud) {
+    final readAloudMode = _readAloudMode && readAloud != null;
     final listView = ListView(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       children: [
@@ -437,11 +499,32 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             taughtForms: widget.taughtForms,
             showFurigana: widget.showFurigana,
             // Highlighted while sounding and through the shadowing hold —
-            // the learner repeats the line they can see marked.
-            isCurrent: audio?.currentLine == index &&
-                (audio?.status == AudioStatus.playing ||
-                    audio?.status == AudioStatus.awaitingRepeat),
+            // the learner repeats the line they can see marked. In read-aloud
+            // mode the active line is highlighted instead.
+            isCurrent: readAloudMode
+                ? readAloud.activeLine == index
+                : audio?.currentLine == index &&
+                    (audio?.status == AudioStatus.playing ||
+                        audio?.status == AudioStatus.awaitingRepeat),
             onReplay: audio == null ? null : () => audio.playLine(index),
+            readAloud: readAloudMode
+                ? _LineReadAloudState(
+                    recording: readAloud.activeLine == index &&
+                        readAloud.status == ReadAloudStatus.recording,
+                    transcribing: readAloud.activeLine == index &&
+                        readAloud.status == ReadAloudStatus.transcribing,
+                    // Other lines' mics are inert while one is active.
+                    enabled: readAloud.status == ReadAloudStatus.idle ||
+                        readAloud.status == ReadAloudStatus.error ||
+                        readAloud.activeLine == index,
+                    result: readAloud.resultFor(index),
+                    error: readAloud.activeLine == index &&
+                            readAloud.status == ReadAloudStatus.error
+                        ? readAloud.errorMessage
+                        : null,
+                    onTap: () => readAloud.toggleLine(index),
+                  )
+                : null,
           ),
       ],
     );
@@ -462,18 +545,29 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 }
 
 /// The player row: play/stop, speed (client-side rate, D50), shadowing
-/// toggle (D63) with its "Your turn" hold row, listening-mode toggle. Inline
-/// error text on synthesis failure — reading is unaffected.
+/// toggle (D63) with its "Your turn" hold row, read-aloud toggle (D67), and
+/// listening-mode toggle. Inline error text on synthesis failure — reading is
+/// unaffected. The three practice modes are mutually exclusive; the parent
+/// coordinates that, so the toggles here just report taps.
 class _AudioBar extends StatelessWidget {
   const _AudioBar({
     required this.controller,
     required this.blurred,
     required this.onToggleBlur,
+    required this.onToggleShadowing,
+    required this.readAloudMode,
+    required this.onToggleReadAloud,
   });
 
   final ListeningController controller;
   final bool blurred;
   final VoidCallback onToggleBlur;
+  final VoidCallback onToggleShadowing;
+  final bool readAloudMode;
+
+  /// Null when read-aloud is unavailable (no conversationId), which greys the
+  /// toggle out.
+  final VoidCallback? onToggleReadAloud;
 
   @override
   Widget build(BuildContext context) {
@@ -531,7 +625,15 @@ class _AudioBar extends StatelessWidget {
                     ? 'Turn off shadowing'
                     : 'Shadowing (repeat after each line)',
                 isSelected: controller.shadowing,
-                onPressed: () => controller.setShadowing(!controller.shadowing),
+                onPressed: onToggleShadowing,
+              ),
+              IconButton(
+                icon: Icon(readAloudMode ? Icons.mic : Icons.mic_none_outlined),
+                tooltip: readAloudMode
+                    ? 'Turn off read-aloud'
+                    : 'Read aloud (check your pronunciation)',
+                isSelected: readAloudMode,
+                onPressed: onToggleReadAloud,
               ),
               IconButton(
                 icon: Icon(
@@ -583,6 +685,34 @@ class _AudioBar extends StatelessWidget {
   }
 }
 
+/// Per-line read-aloud state handed to a [_LineRow] when read-aloud mode is
+/// on; null otherwise.
+@immutable
+class _LineReadAloudState {
+  const _LineReadAloudState({
+    required this.recording,
+    required this.transcribing,
+    required this.enabled,
+    required this.result,
+    required this.error,
+    required this.onTap,
+  });
+
+  final bool recording;
+  final bool transcribing;
+
+  /// Whether this line's mic responds — false while another line is busy.
+  final bool enabled;
+
+  final ReadAloudResult? result;
+
+  /// Error text for this line, or null.
+  final String? error;
+
+  /// Start/stop recording this line.
+  final VoidCallback onTap;
+}
+
 class _LineRow extends StatelessWidget {
   const _LineRow({
     required this.line,
@@ -591,6 +721,7 @@ class _LineRow extends StatelessWidget {
     required this.showFurigana,
     this.isCurrent = false,
     this.onReplay,
+    this.readAloud,
   });
 
   final GenLine line;
@@ -605,10 +736,14 @@ class _LineRow extends StatelessWidget {
   /// conversation has no audio layer.
   final VoidCallback? onReplay;
 
+  /// Read-aloud state for this line, or null when the mode is off (D67).
+  final _LineReadAloudState? readAloud;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = displayTokens(line, seed);
+    final ra = readAloud;
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -622,7 +757,8 @@ class _LineRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Speaker margin column (D43: book-marginalia, not "Name: line"),
-          // with the per-line replay affordance beneath the name.
+          // with the per-line affordance beneath the name — a replay control
+          // normally, the read-aloud mic when that mode is on.
           SizedBox(
             width: 44,
             child: Column(
@@ -637,7 +773,9 @@ class _LineRow extends StatelessWidget {
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ),
-                if (onReplay != null)
+                if (ra != null)
+                  _MicButton(state: ra, theme: theme)
+                else if (onReplay != null)
                   IconButton(
                     icon: const Icon(Icons.replay, size: 16),
                     tooltip: 'Play this line',
@@ -651,17 +789,137 @@ class _LineRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.end,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final token in tokens)
-                  _TokenView(
-                    token: token,
-                    taughtForms: taughtForms,
-                    showFurigana: showFurigana,
-                  ),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  children: [
+                    for (final token in tokens)
+                      _TokenView(
+                        token: token,
+                        taughtForms: taughtForms,
+                        showFurigana: showFurigana,
+                      ),
+                  ],
+                ),
+                if (ra != null) _ReadAloudFeedback(state: ra),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The margin mic control for one line: mic when idle, stop while recording,
+/// a spinner while transcribing.
+class _MicButton extends StatelessWidget {
+  const _MicButton({required this.state, required this.theme});
+
+  final _LineReadAloudState state;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.transcribing) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 8, right: 8),
+        child: SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    final recording = state.recording;
+    return IconButton(
+      icon: Icon(recording ? Icons.stop_circle : Icons.mic, size: 18),
+      tooltip: recording ? 'Stop and check' : 'Record this line',
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      color: recording
+          ? theme.colorScheme.error
+          : theme.colorScheme.primary,
+      onPressed: state.enabled ? state.onTap : null,
+    );
+  }
+}
+
+/// The verdict-and-transcript block under a line in read-aloud mode. The raw
+/// transcript is always shown (spec §5): it's the truth the verdict only
+/// hints at.
+class _ReadAloudFeedback extends StatelessWidget {
+  const _ReadAloudFeedback({required this.state});
+
+  final _LineReadAloudState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (state.error != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          state.error!,
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.error),
+        ),
+      );
+    }
+    if (state.recording) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          'Recording… tap the mic when you’re done',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.primary),
+        ),
+      );
+    }
+    final result = state.result;
+    if (result == null) return const SizedBox.shrink();
+
+    final (IconData icon, Color color, String label) = switch (result.verdict) {
+      ReadAloudVerdict.match => (
+          Icons.check_circle,
+          theme.colorScheme.primary,
+          'Sounds right'
+        ),
+      ReadAloudVerdict.close => (
+          Icons.info_outline,
+          theme.colorScheme.tertiary,
+          'Close — check what it heard'
+        ),
+      ReadAloudVerdict.mismatch => (
+          Icons.cancel_outlined,
+          theme.colorScheme.error,
+          "Didn't match"
+        ),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 4),
+              Text(label,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: color, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            result.transcript.isEmpty
+                ? 'Heard: (nothing)'
+                : 'Heard: ${result.transcript}',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
