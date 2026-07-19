@@ -971,6 +971,28 @@ void main() {
     expect(find.byTooltip('Play'), findsOneWidget); // back to idle
   });
 
+  testWidgets('audio bar fits a phone width with all four toggles (no overflow)',
+      (tester) async {
+    // The default test surface is 800px wide, so a too-wide audio bar only
+    // overflows on a real phone. Pin an iPhone-ish width to catch it.
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpScreen(tester);
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull); // no RenderFlex overflow
+    // All controls still present at this width.
+    expect(find.byTooltip('Play'), findsOneWidget);
+    expect(find.byTooltip('Shadowing (repeat after each line)'), findsOneWidget);
+    expect(find.byTooltip('Read aloud (check your pronunciation)'),
+        findsOneWidget);
+    expect(find.byTooltip('Listening mode (hide text)'), findsOneWidget);
+  });
+
   testWidgets('read-aloud: record a line, get a verdict and the transcript',
       (tester) async {
     final recorder = FakeSpeechRecorder();

@@ -618,29 +618,47 @@ class _AudioBar extends StatelessWidget {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.record_voice_over_outlined),
-                tooltip: controller.shadowing
-                    ? 'Turn off shadowing'
-                    : 'Shadowing (repeat after each line)',
-                isSelected: controller.shadowing,
-                onPressed: onToggleShadowing,
-              ),
-              IconButton(
-                icon: Icon(readAloudMode ? Icons.mic : Icons.mic_none_outlined),
-                tooltip: readAloudMode
-                    ? 'Turn off read-aloud'
-                    : 'Read aloud (check your pronunciation)',
-                isSelected: readAloudMode,
-                onPressed: onToggleReadAloud,
-              ),
-              IconButton(
-                icon: Icon(
-                    blurred ? Icons.visibility_outlined : Icons.hearing_outlined),
-                tooltip: blurred ? 'Show text' : 'Listening mode (hide text)',
-                isSelected: blurred,
-                onPressed: onToggleBlur,
+              // The mode toggles sit in an Expanded Wrap so they stay right-
+              // aligned and on one line on real phones, but reflow to a
+              // second run instead of overflowing on a narrow width or large
+              // text scale (a fourth toggle, D67, overran a fixed Row). Compact
+              // density keeps them on one line in the common case.
+              Expanded(
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.record_voice_over_outlined),
+                      tooltip: controller.shadowing
+                          ? 'Turn off shadowing'
+                          : 'Shadowing (repeat after each line)',
+                      isSelected: controller.shadowing,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onToggleShadowing,
+                    ),
+                    IconButton(
+                      icon: Icon(
+                          readAloudMode ? Icons.mic : Icons.mic_none_outlined),
+                      tooltip: readAloudMode
+                          ? 'Turn off read-aloud'
+                          : 'Read aloud (check your pronunciation)',
+                      isSelected: readAloudMode,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onToggleReadAloud,
+                    ),
+                    IconButton(
+                      icon: Icon(blurred
+                          ? Icons.visibility_outlined
+                          : Icons.hearing_outlined),
+                      tooltip:
+                          blurred ? 'Show text' : 'Listening mode (hide text)',
+                      isSelected: blurred,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onToggleBlur,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
