@@ -139,6 +139,16 @@ void main() {
         throwsA(isA<GenerationRefused>()),
       );
     });
+
+    test('throws GenerationTruncated on a max_tokens stop, not a StateError '
+        '(the observed live failure)', () {
+      // The real failing response: hit the cap with no complete text block.
+      expect(
+        () => parseGenerationResponse(
+            {'stop_reason': 'max_tokens', 'content': []}),
+        throwsA(isA<GenerationTruncated>()),
+      );
+    });
   });
 
   group('validateScope', () {

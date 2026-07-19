@@ -217,6 +217,19 @@ class GenerationRefused implements Exception {
   String toString() => 'GenerationRefused: $details';
 }
 
+/// Thrown when the model hit the `max_tokens` cap before finishing the JSON.
+/// The response carries only a partial (or, as observed live, no complete)
+/// text block; caught here so the caller sees the real cause instead of an
+/// opaque "no text block" StateError or FormatException. Mirrors
+/// [ExtractionTruncated] (D54) for the generation path.
+class GenerationTruncated implements Exception {
+  GenerationTruncated();
+  @override
+  String toString() =>
+      'GenerationTruncated: the conversation ran past the output token limit '
+      'before it finished';
+}
+
 // ---------------------------------------------------------------------------
 // Request / response
 // ---------------------------------------------------------------------------
@@ -344,7 +357,16 @@ Map<String, dynamic> buildGenerationRequest({
   required GenerationSeed seed,
   int lineCount = 6,
   String model = ModelConfig.generation,
-  int maxTokens = 4000,
+
+  /// A fully token-annotated 6-line conversation (each line carries its text
+  /// plus a per-token surface/vocab_id array) is bigger output than it looks;
+  /// 4000 was observed truncating a real generation mid-JSON (stop_reason=
+  /// max_tokens, no usable text block). Doubled to 8000 for comfortable
+  /// headroom — max_tokens is a ceiling, not a target, so the extra budget
+  /// costs nothing unless a conversation actually needs it, and 8000 stays
+  /// well inside the safe non-streaming range for the blocking `dio` POST
+  /// (same reasoning as the extraction cap, D54).
+  int maxTokens = 8000,
 
   /// Optional topic/vocabulary steer, e.g. "eating, drinking, and going
   /// somewhere". Doesn't relax scope — just nudges which in-scope material the
@@ -379,6 +401,12 @@ Map<String, dynamic> buildGenerationRequest({
 GeneratedConversation parseGenerationResponse(Map<String, dynamic> response) {
   if (response['stop_reason'] == 'refusal') {
     throw GenerationRefused(response['stop_details']);
+  }
+  // A `max_tokens` stop means the JSON was cut off — observed live to leave no
+  // complete text block at all, which the firstWhere below would report as an
+  // opaque "no text block" StateError. Surface the real cause instead (D54).
+  if (response['stop_reason'] == 'max_tokens') {
+    throw GenerationTruncated();
   }
   final content = (response['content'] as List).cast<Map<String, dynamic>>();
   final textBlock = content.firstWhere(

@@ -189,6 +189,14 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
     } on GenerationRefused {
       await _fail(
           'The generator declined that one. You can try again, or head back.');
+    } on GenerationTruncated {
+      // Distinct from the generic parse bucket: the model reached the output
+      // cap before finishing (the raised limit should make this rare). Log it
+      // so a recurring case is visible against the new ceiling.
+      developer.log('generation truncated (hit max_tokens)',
+          name: 'reading.generate');
+      await _fail('That conversation ran long and got cut off. '
+          'Try again, or head back.');
     } catch (error, stack) {
       // Everything that isn't a missing key, a refusal, or an out-of-scope
       // result lands here: connectivity, server-side HTTP status, a timeout,
