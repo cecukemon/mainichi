@@ -72,6 +72,18 @@ final _conversation = GeneratedConversation(
   usedStructureIds: [1],
 );
 
+/// A six-line in-scope conversation (the two valid lines, alternating) so the
+/// feed overflows a short viewport — used to exercise read-aloud auto-scroll.
+GeneratedConversation _sixLineConversation() {
+  final a = _conversation.lines[0];
+  final b = _conversation.lines[1];
+  return GeneratedConversation(
+    lines: [a, b, a, b, a, b],
+    usedVocabIds: const [5, 20, 21, 31],
+    usedStructureIds: const [1],
+  );
+}
+
 /// Out-of-scope against [_seed]: ねこ is untaught, glue-tagged (the model's
 /// usual laundering of an unknown word). Both the glue check and factoring
 /// reject it; ねこ is the word-shaped backfill candidate.
@@ -971,6 +983,28 @@ void main() {
     expect(find.byTooltip('Play'), findsOneWidget); // back to idle
   });
 
+  testWidgets('audio bar fits a phone width with all four toggles (no overflow)',
+      (tester) async {
+    // The default test surface is 800px wide, so a too-wide audio bar only
+    // overflows on a real phone. Pin an iPhone-ish width to catch it.
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpScreen(tester);
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.takeException(), isNull); // no RenderFlex overflow
+    // All controls still present at this width.
+    expect(find.byTooltip('Play'), findsOneWidget);
+    expect(find.byTooltip('Shadowing (repeat after each line)'), findsOneWidget);
+    expect(find.byTooltip('Read aloud (check your pronunciation)'),
+        findsOneWidget);
+    expect(find.byTooltip('Listening mode (hide text)'), findsOneWidget);
+  });
+
   testWidgets('read-aloud: record a line, get a verdict and the transcript',
       (tester) async {
     final recorder = FakeSpeechRecorder();
@@ -995,6 +1029,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sounds right'), findsOneWidget);
     expect(find.text('Heard: 田中はすしを食べますか'), findsOneWidget);
+  });
+
+  testWidgets('read-aloud scrolls the active line into view', (tester) async {
+    // A short viewport so the six-line feed overflows and a lower line
+    // starts below the fold.
+    tester.view.physicalSize = const Size(400, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpScreen(tester, results: [_sixLineConversation()]);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.pumpAndSettle();
+
+    final listFinder = find.byType(Scrollable).first;
+    final before = tester.state<ScrollableState>(listFinder).position.pixels;
+    expect(before, 0.0); // starts at the top
+
+    // Record a line low enough to require scrolling to sit in the upper third.
+    await tester.tap(find.byTooltip('Record this line').at(2));
+    await tester.pumpAndSettle();
+
+    final after = tester.state<ScrollableState>(listFinder).position.pixels;
+    expect(after, greaterThan(before)); // the feed scrolled down to it
   });
 
   testWidgets('read-aloud: a mismatch shows the raw transcript, not a pass',

@@ -332,9 +332,19 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   bool _blurred = false;
   bool _readAloudMode = false;
 
+  /// One key per line so the active read-aloud line can be scrolled into view.
+  late final List<GlobalKey> _lineKeys;
+
+  /// The line last scrolled to, so a rebuild doesn't re-scroll the same line
+  /// mid-recording; reset to null when nothing is active so re-selecting the
+  /// same line scrolls again.
+  int? _scrolledForLine;
+
   @override
   void initState() {
     super.initState();
+    _lineKeys =
+        [for (final _ in widget.conversation.lines) GlobalKey()];
     final id = widget.conversationId;
     if (id != null) {
       _audio = ListeningController(
@@ -352,6 +362,30 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         expectedLines: [for (final l in widget.conversation.lines) l.text],
       );
     }
+  }
+
+  /// Scrolls the active read-aloud line into view when it changes, so the
+  /// line being read (and its verdict, which renders just below) is visible
+  /// even when it started below the fold. A post-frame callback because the
+  /// scroll must run after the line has laid out.
+  void _maybeScrollToActiveLine(int? activeLine) {
+    if (!_readAloudMode || activeLine == null) {
+      _scrolledForLine = null;
+      return;
+    }
+    if (activeLine == _scrolledForLine) return;
+    _scrolledForLine = activeLine;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _lineKeys[activeLine].currentContext;
+      if (ctx == null || !mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        // Upper third, leaving room below for the verdict/transcript block.
+        alignment: 0.3,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   @override
@@ -417,6 +451,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   Widget _buildBody(BuildContext context, ListeningController? audio,
       ReadAloudController? readAloud) {
     final theme = Theme.of(context);
+    _maybeScrollToActiveLine(readAloud?.activeLine);
 
     return Column(
       children: [
@@ -494,6 +529,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
       children: [
         for (final (index, line) in widget.conversation.lines.indexed)
           _LineRow(
+            key: _lineKeys[index],
             line: line,
             seed: widget.seed,
             taughtForms: widget.taughtForms,
@@ -618,29 +654,47 @@ class _AudioBar extends StatelessWidget {
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.record_voice_over_outlined),
-                tooltip: controller.shadowing
-                    ? 'Turn off shadowing'
-                    : 'Shadowing (repeat after each line)',
-                isSelected: controller.shadowing,
-                onPressed: onToggleShadowing,
-              ),
-              IconButton(
-                icon: Icon(readAloudMode ? Icons.mic : Icons.mic_none_outlined),
-                tooltip: readAloudMode
-                    ? 'Turn off read-aloud'
-                    : 'Read aloud (check your pronunciation)',
-                isSelected: readAloudMode,
-                onPressed: onToggleReadAloud,
-              ),
-              IconButton(
-                icon: Icon(
-                    blurred ? Icons.visibility_outlined : Icons.hearing_outlined),
-                tooltip: blurred ? 'Show text' : 'Listening mode (hide text)',
-                isSelected: blurred,
-                onPressed: onToggleBlur,
+              // The mode toggles sit in an Expanded Wrap so they stay right-
+              // aligned and on one line on real phones, but reflow to a
+              // second run instead of overflowing on a narrow width or large
+              // text scale (a fourth toggle, D67, overran a fixed Row). Compact
+              // density keeps them on one line in the common case.
+              Expanded(
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.record_voice_over_outlined),
+                      tooltip: controller.shadowing
+                          ? 'Turn off shadowing'
+                          : 'Shadowing (repeat after each line)',
+                      isSelected: controller.shadowing,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onToggleShadowing,
+                    ),
+                    IconButton(
+                      icon: Icon(
+                          readAloudMode ? Icons.mic : Icons.mic_none_outlined),
+                      tooltip: readAloudMode
+                          ? 'Turn off read-aloud'
+                          : 'Read aloud (check your pronunciation)',
+                      isSelected: readAloudMode,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onToggleReadAloud,
+                    ),
+                    IconButton(
+                      icon: Icon(blurred
+                          ? Icons.visibility_outlined
+                          : Icons.hearing_outlined),
+                      tooltip:
+                          blurred ? 'Show text' : 'Listening mode (hide text)',
+                      isSelected: blurred,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onToggleBlur,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -715,6 +769,7 @@ class _LineReadAloudState {
 
 class _LineRow extends StatelessWidget {
   const _LineRow({
+    super.key,
     required this.line,
     required this.seed,
     required this.taughtForms,
