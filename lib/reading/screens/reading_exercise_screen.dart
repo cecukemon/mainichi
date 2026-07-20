@@ -332,8 +332,13 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   bool _blurred = false;
   bool _readAloudMode = false;
 
-  /// One key per line so the active read-aloud line can be scrolled into view.
+  /// One key per line so the active line can be scrolled into view.
   late final List<GlobalKey> _lineKeys;
+
+  /// Drives the conversation list, so a far jump (e.g. back to the top for a
+  /// new pass) can land near the target even when its render object has been
+  /// recycled and [Scrollable.ensureVisible] alone can't reach it.
+  final ScrollController _scrollController = ScrollController();
 
   /// The line last scrolled to, so a rebuild doesn't re-scroll the same line
   /// mid-recording; reset to null when nothing is active so re-selecting the
@@ -364,20 +369,45 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     }
   }
 
-  /// Scrolls the active read-aloud line into view when it changes, so the
-  /// line being read (and its verdict, which renders just below) is visible
-  /// even when it started below the fold. A post-frame callback because the
-  /// scroll must run after the line has laid out.
+  /// The line currently highlighted, across every mode: the active read-aloud
+  /// line when that mode is on, otherwise the line sounding during playback or
+  /// held for shadowing (also highlighted, if blurred, in listening mode).
+  /// Null when nothing is highlighted.
+  int? _activeLine(ListeningController? audio, ReadAloudController? readAloud) {
+    if (_readAloudMode && readAloud != null) return readAloud.activeLine;
+    if (audio != null &&
+        (audio.status == AudioStatus.playing ||
+            audio.status == AudioStatus.awaitingRepeat)) {
+      return audio.currentLine;
+    }
+    return null;
+  }
+
+  /// Scrolls the highlighted line into view when it changes, so the line being
+  /// read or heard (and, in read-aloud mode, its verdict just below) stays
+  /// visible even when it started below the fold. A post-frame callback
+  /// because the scroll must run after the line has laid out.
   void _maybeScrollToActiveLine(int? activeLine) {
-    if (!_readAloudMode || activeLine == null) {
+    if (activeLine == null) {
       _scrolledForLine = null;
       return;
     }
     if (activeLine == _scrolledForLine) return;
     _scrolledForLine = activeLine;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = _lineKeys[activeLine].currentContext;
-      if (ctx == null || !mounted) return;
+      if (mounted) _scrollLineIntoView(activeLine, allowJump: true);
+    });
+  }
+
+  /// Brings [line] into view. Prefers [Scrollable.ensureVisible] for a precise
+  /// animated scroll, which only works while the line's render object is live.
+  /// When it isn't — the line sits far outside the list's cache extent, e.g.
+  /// jumping from the last line back to the first for a new pass — [allowJump]
+  /// lets us estimate its offset, jump close so it builds, then refine on the
+  /// next frame.
+  void _scrollLineIntoView(int line, {required bool allowJump}) {
+    final ctx = _lineKeys[line].currentContext;
+    if (ctx != null) {
       Scrollable.ensureVisible(
         ctx,
         // Upper third, leaving room below for the verdict/transcript block.
@@ -385,6 +415,15 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
+      return;
+    }
+    if (!allowJump || !_scrollController.hasClients || _lineKeys.isEmpty) return;
+    final position = _scrollController.position;
+    final estimate =
+        (line / _lineKeys.length) * position.maxScrollExtent;
+    _scrollController.jumpTo(estimate.clamp(0.0, position.maxScrollExtent));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollLineIntoView(line, allowJump: false);
     });
   }
 
@@ -392,6 +431,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   void dispose() {
     _audio?.dispose();
     _readAloud?.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -451,7 +491,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   Widget _buildBody(BuildContext context, ListeningController? audio,
       ReadAloudController? readAloud) {
     final theme = Theme.of(context);
-    _maybeScrollToActiveLine(readAloud?.activeLine);
+    _maybeScrollToActiveLine(_activeLine(audio, readAloud));
 
     return Column(
       children: [
@@ -525,6 +565,7 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   Widget _buildLines(ListeningController? audio, ReadAloudController? readAloud) {
     final readAloudMode = _readAloudMode && readAloud != null;
     final listView = ListView(
+      controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       children: [
         for (final (index, line) in widget.conversation.lines.indexed)
@@ -699,30 +740,40 @@ class _AudioBar extends StatelessWidget {
             ],
           ),
           // Shadowing hold (D63): the learner repeats the line aloud, then
-          // taps on. Advance is a tap, never a timer.
-          if (controller.status == AudioStatus.awaitingRepeat)
-            Padding(
-              padding: const EdgeInsets.only(left: 12, bottom: 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Your turn — say it aloud',
-                      style: theme.textTheme.bodyMedium,
+          // taps on. Advance is a tap, never a timer. The row stays mounted
+          // for the whole pass — the same-height row shows through both the
+          // sounding line and the hold, just with different text and the
+          // buttons disabled while a line plays — so the conversation beneath
+          // it doesn't jump up and down as each line is read.
+          if (controller.shadowing &&
+              (controller.status == AudioStatus.playing ||
+                  controller.status == AudioStatus.awaitingRepeat))
+            Builder(builder: (context) {
+              final awaiting =
+                  controller.status == AudioStatus.awaitingRepeat;
+              return Padding(
+                padding: const EdgeInsets.only(left: 12, bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        awaiting ? 'Your turn — say it aloud' : 'Listen…',
+                        style: theme.textTheme.bodyMedium,
+                      ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: controller.repeatShadowLine,
-                    child: const Text('Hear it again'),
-                  ),
-                  const SizedBox(width: 4),
-                  FilledButton(
-                    onPressed: controller.advanceShadow,
-                    child: Text(controller.onLastLine ? 'Done' : 'Next line'),
-                  ),
-                ],
-              ),
-            ),
+                    TextButton(
+                      onPressed: awaiting ? controller.repeatShadowLine : null,
+                      child: const Text('Hear it again'),
+                    ),
+                    const SizedBox(width: 4),
+                    FilledButton(
+                      onPressed: awaiting ? controller.advanceShadow : null,
+                      child: Text(controller.onLastLine ? 'Done' : 'Next line'),
+                    ),
+                  ],
+                ),
+              );
+            }),
           if (controller.status == AudioStatus.error)
             Padding(
               padding: const EdgeInsets.only(left: 12, bottom: 4),
