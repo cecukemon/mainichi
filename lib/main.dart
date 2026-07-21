@@ -7,6 +7,7 @@ import 'data/connection.dart';
 import 'data/database.dart';
 import 'reading/screens/conversation_list_screen.dart';
 import 'settings/api_key_store.dart';
+import 'speaking/screens/free_conversation_screen.dart';
 import 'settings/screens/settings_screen.dart';
 import 'settings/settings_providers.dart';
 
@@ -68,6 +69,16 @@ class HomeScreen extends ConsumerWidget {
               ),
               icon: const Icon(Icons.menu_book_outlined),
               label: const Text('Reading practice'),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const FreeConversationScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: const Text('Free conversation'),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(

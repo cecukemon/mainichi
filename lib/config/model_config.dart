@@ -19,4 +19,11 @@ class ModelConfig {
   /// latency-sensitive generation (decision D3). Validate quality on
   /// [extraction]'s ceiling model first, then confirm this holds.
   static const String generation = 'claude-sonnet-5';
+
+  /// Free-conversation turns — the combined grade+generate call (speaking rung
+  /// 3, D69). Same latency-sensitive tier as [generation]: turn-based practice
+  /// tolerates ~3–5 s, and the call shares generation's cached constraint
+  /// prefix. A clean knob to bump toward [extraction]'s ceiling if the semantic
+  /// grading proves weak in practice.
+  static const String conversation = 'claude-sonnet-5';
 }
