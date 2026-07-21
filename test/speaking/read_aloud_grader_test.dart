@@ -40,6 +40,34 @@ void main() {
       expect(grade('すしを食べます', 'こんにちは'), ReadAloudVerdict.mismatch);
     });
 
+    group('kanji tolerance (D68)', () {
+      test('a kana-only line read perfectly matches even when STT writes kanji',
+          () {
+        // The two live cases: すき → 好き, わたし → 私 (1 kanji for 3 kana).
+        expect(grade('あなたはコーヒーがすきですか?', 'あなたはコーヒーが好きですか'),
+            ReadAloudVerdict.match);
+        expect(grade('はい、わたしはコーヒーがすきです。', 'はい、私はコーヒーが好きです'),
+            ReadAloudVerdict.match);
+      });
+
+      test('a single kanji standing in for one kana still matches', () {
+        expect(grade('すきです', '好きです'), ReadAloudVerdict.match);
+      });
+
+      test('a wrong reading of a kana word still fails on the kana skeleton',
+          () {
+        // すき misread as きらい, heard in kanji: the surrounding kana match but
+        // き≠ら / い trips it — kanji tolerance must not launder this into a pass.
+        final verdict = grade('わたしはすきです', 'わたしは嫌いです');
+        expect(verdict, isNot(ReadAloudVerdict.match));
+      });
+
+      test('a lone kanji cannot absorb a whole line for free', () {
+        // The absorb cap: one kanji can't stand in for an entire sentence.
+        expect(grade('あなたはコーヒーがすきですか', '好'), ReadAloudVerdict.mismatch);
+      });
+    });
+
     test('empty transcript (recognizer heard nothing) is a mismatch', () {
       expect(grade('すしを食べます', ''), ReadAloudVerdict.mismatch);
     });
