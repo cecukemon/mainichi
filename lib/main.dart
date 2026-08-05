@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'bunko/screens/bunko_screen.dart';
 import 'capture/capture_providers.dart';
 import 'capture/screens/photo_import_screen.dart';
 import 'data/connection.dart';
@@ -79,6 +80,14 @@ class HomeScreen extends ConsumerWidget {
               ),
               icon: const Icon(Icons.chat_bubble_outline),
               label: const Text('Free conversation'),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const BunkoScreen()),
+              ),
+              icon: const Icon(Icons.collections_bookmark_outlined),
+              label: const Text('Bunko'),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
