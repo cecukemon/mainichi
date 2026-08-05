@@ -66,8 +66,12 @@ void main() {
     final service = LiveGenerationService(
         apiKeyProvider: () async => 'sk-ant-test', dio: dio);
 
-    final convo =
-        await service.generate(seed: _seed, lineCount: 4, focus: 'books');
+    final convo = await service.generate(
+      seed: _seed,
+      lineCount: 4,
+      focus: 'books',
+      avoidTopics: ['Ordering food'],
+    );
 
     expect(convo.lines.single.text, 'これは ほん です。');
     expect(convo.lines.single.tokens[1].vocabId, 4);
@@ -85,6 +89,7 @@ void main() {
         (sentBody['messages'] as List).first['content'] as String;
     expect(userMessage, contains('4-line'));
     expect(userMessage, contains('books'));
+    expect(userMessage, contains('Recent conversations covered: Ordering food.'));
   });
 
   test('surfaces a model refusal as GenerationRefused', () async {

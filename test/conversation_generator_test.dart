@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mainichi/data/glue_seed.dart';
@@ -99,6 +100,72 @@ void main() {
       final content =
           ((focused['messages'] as List).first as Map)['content'] as String;
       expect(content, contains('Favor vocabulary and patterns about: eating and drinking.'));
+    });
+
+    test('omits the avoid-topics clause by default', () {
+      final content =
+          ((req['messages'] as List).first as Map)['content'] as String;
+      expect(content, isNot(contains('Recent conversations')));
+    });
+
+    test('renders avoidTopics as a recent-conversations steer (D71)', () {
+      final avoided = buildGenerationRequest(
+        seed: _seed,
+        avoidTopics: ['Ordering food', 'Asking directions'],
+      );
+      final content =
+          ((avoided['messages'] as List).first as Map)['content'] as String;
+      expect(
+        content,
+        contains('Recent conversations covered: Ordering food; Asking '
+            'directions. Pick a different everyday situation.'),
+      );
+    });
+
+    test('focus and avoidTopics combine in one user message', () {
+      final combined = buildGenerationRequest(
+        seed: _seed,
+        focus: 'books',
+        avoidTopics: ['Ordering food'],
+      );
+      final content =
+          ((combined['messages'] as List).first as Map)['content'] as String;
+      expect(content, contains('Favor vocabulary and patterns about: books.'));
+      expect(content, contains('Recent conversations covered: Ordering food.'));
+    });
+  });
+
+  group('varietyFocus (D71)', () {
+    test('is deterministic for a given seed', () {
+      expect(varietyFocus(_seed, Random(7)), varietyFocus(_seed, Random(7)));
+    });
+
+    test('excludes name-role vocab', () {
+      expect(varietyFocus(_seed, Random(1)), isNot(contains('すずき')));
+    });
+
+    test('includes structure templates and non-name vocab present in the seed',
+        () {
+      // _seed has exactly one structure and two non-name words — small
+      // enough that take(2)/take(3) includes everything regardless of shuffle.
+      final focus = varietyFocus(_seed, Random(1));
+      expect(focus, contains('"これは {noun_1} です"'));
+      expect(focus, contains('これ'));
+      expect(focus, contains('ほん (book)'));
+    });
+
+    test('an empty seed returns an empty string', () {
+      const empty = GenerationSeed(vocab: [], structures: []);
+      expect(varietyFocus(empty, Random()), isEmpty);
+    });
+
+    test('a seed with only name vocab and no structures returns an empty '
+        'string', () {
+      const namesOnly = GenerationSeed(
+        vocab: [SeedWord(id: 20, kana: 'すずき', role: 'name')],
+        structures: [],
+      );
+      expect(varietyFocus(namesOnly, Random()), isEmpty);
     });
   });
 
