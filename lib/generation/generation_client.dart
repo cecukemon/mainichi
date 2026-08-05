@@ -24,6 +24,7 @@ abstract class GenerationService {
     required GenerationSeed seed,
     int lineCount = 6,
     String? focus,
+    List<String> avoidTopics = const [],
   });
 }
 
@@ -41,6 +42,7 @@ class LiveGenerationService implements GenerationService {
     required GenerationSeed seed,
     int lineCount = 6,
     String? focus,
+    List<String> avoidTopics = const [],
   }) async {
     final apiKey = await apiKeyProvider();
     if (apiKey == null || apiKey.isEmpty) throw ApiKeyMissing();
@@ -51,6 +53,7 @@ class LiveGenerationService implements GenerationService {
         seed: seed,
         lineCount: lineCount,
         focus: focus,
+        avoidTopics: avoidTopics,
       ),
       options: Options(
         headers: {

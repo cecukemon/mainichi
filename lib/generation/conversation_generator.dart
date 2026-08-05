@@ -14,6 +14,7 @@ library;
 
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:math';
 
 import '../config/model_config.dart';
 import '../japanese/okurigana.dart';
@@ -325,9 +326,10 @@ Scope — the one hard rule:
 - Do NOT add honorifics, sentence-final particles, or any other word not in VOCABULARY or GRAMMAR GLUE (e.g. さん, ね, よ) — these have not necessarily been taught yet either, even though they seem minor.
 - Respect each slot's form: a slot with form "negative" takes the negated form (i-adjective おもしろい → おもしろく).
 
-Make it one coherent question-and-answer dialogue:
+Make it one coherent, varied dialogue:
 - Speakers are the VOCABULARY entries whose role is "name". Use at least two; have them take turns naturally.
-- Every answer must fit its question:
+- Vary the conversation: use several different listed STRUCTURES rather than repeating one pattern, and never ask the same question shape twice in a row. Mix in statements, observations, and reactions — not every line needs to be a question or an answer.
+- When a line is an answer, it must fit its question:
   - A なん ("what") question is NOT yes/no — answer by identifying the thing (それは {noun} です), never with はい/いいえ.
   - A yes/no question about an i-adjective (この … は {adjective} ですか) is answered about that adjective — はい、{adjective} です / いいえ、{adjective-negative} ありません — not by switching to an unrelated noun.
   - A yes/no question about a thing (これは {noun} ですか) is answered はい、それは {noun} です / いいえ、それは {noun} ではありません, keeping the same thing in view.
@@ -373,6 +375,25 @@ String constraintContext(GenerationSeed seed) {
       'GRAMMAR GLUE:\n${enc.convert(glue)}';
 }
 
+/// A randomized nudge toward a slice of the seed (D71), so a repeated call
+/// against the same Bunko doesn't default to the same "safe" pattern every
+/// time. Picks up to 2 structure templates (quoted verbatim — identical to
+/// how they appear in STRUCTURES, so the model can match them unambiguously)
+/// and up to 3 content words (role != "name"), rendered `kana (meaning)`.
+/// Returns '' when the seed has nothing to pick from (e.g. only names).
+String varietyFocus(GenerationSeed seed, Random rng) {
+  final structures = seed.structures.toList()..shuffle(rng);
+  final content = seed.vocab.where((w) => w.role != 'name').toList()
+    ..shuffle(rng);
+
+  final parts = <String>[
+    for (final s in structures.take(2)) '"${s.template}"',
+    for (final w in content.take(3))
+      w.meaning.isNotEmpty ? '${w.kana} (${w.meaning})' : w.kana,
+  ];
+  return parts.join(', ');
+}
+
 Map<String, dynamic> buildGenerationRequest({
   required GenerationSeed seed,
   int lineCount = 6,
@@ -393,10 +414,20 @@ Map<String, dynamic> buildGenerationRequest({
   /// model reaches for. Useful for validation runs that need to exercise
   /// specific vocabulary/structures rather than whatever the model defaults to.
   String? focus,
+
+  /// Recent conversation topics to steer away from (D71) — repetition
+  /// mitigation, not a scope rule. Empty entries should be filtered by the
+  /// caller; an empty list omits the clause entirely.
+  List<String> avoidTopics = const [],
 }) {
   final instruction = StringBuffer('Generate a $lineCount-line conversation.');
   if (focus != null && focus.isNotEmpty) {
     instruction.write(' Favor vocabulary and patterns about: $focus.');
+  }
+  if (avoidTopics.isNotEmpty) {
+    instruction.write(
+        ' Recent conversations covered: ${avoidTopics.join('; ')}. '
+        'Pick a different everyday situation.');
   }
   return {
     'model': model,

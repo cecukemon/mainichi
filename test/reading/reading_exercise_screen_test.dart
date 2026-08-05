@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -189,12 +191,19 @@ class FakeGenerationService implements GenerationService {
   final List<Object> results;
   int calls = 0;
 
+  /// The most recent call's steer args (D71), for tests that assert on them.
+  String? lastFocus;
+  List<String> lastAvoidTopics = const [];
+
   @override
   Future<GeneratedConversation> generate({
     required GenerationSeed seed,
     int lineCount = 6,
     String? focus,
+    List<String> avoidTopics = const [],
   }) async {
+    lastFocus = focus;
+    lastAvoidTopics = avoidTopics;
     final result = results[calls < results.length ? calls : results.length - 1];
     calls++;
     if (result is Exception) throw result;
@@ -341,6 +350,7 @@ Future<FakeGenerationService> _pumpScreen(
   FakeStt? stt,
   ReadingStart start = ReadingStart.generate,
   int? conversationId,
+  Random? rng,
 }) async {
   final service = FakeGenerationService(results ?? [_conversation]);
   await tester.pumpWidget(
@@ -349,6 +359,7 @@ Future<FakeGenerationService> _pumpScreen(
         seedSourceProvider
             .overrideWithValue(seedSource ?? FakeSeedSource(seed)),
         generationServiceProvider.overrideWithValue(service),
+        readingRandomProvider.overrideWithValue(rng ?? Random()),
         conversationStoreProvider
             .overrideWithValue(cache ?? FakeConversationStore()),
         conversationAudioStoreProvider
@@ -460,6 +471,46 @@ void main() {
     await tester.pump();
     expect(service.calls, 2);
     expect(find.text('べません'), findsOneWidget);
+  });
+
+  testWidgets('passes a variety focus drawn from the seed (D71)', (tester) async {
+    final service = await _pumpScreen(tester, rng: Random(1));
+    await tester.pump();
+
+    // _seed has one structure and two non-name vocab words (すし, たべる) —
+    // small enough that varietyFocus's take(2)/take(3) includes everything,
+    // regardless of shuffle order.
+    expect(service.lastFocus, isNotNull);
+    expect(service.lastFocus, contains('{name_1} は {noun_1} を {verb_1} か'));
+    expect(service.lastFocus, contains('すし'));
+    expect(service.lastFocus, contains('たべる'));
+  });
+
+  testWidgets('passes recent conversation titles as an avoid list, filtering '
+      'empty ones (D71)', (tester) async {
+    final cache = FakeConversationStore();
+    cache.saved.addAll([
+      GeneratedConversation(
+          topic: 'Ordering food',
+          lines: const [],
+          usedVocabIds: const [],
+          usedStructureIds: const []),
+      GeneratedConversation(
+          topic: '',
+          lines: const [],
+          usedVocabIds: const [],
+          usedStructureIds: const []),
+      GeneratedConversation(
+          topic: 'Asking directions',
+          lines: const [],
+          usedVocabIds: const [],
+          usedStructureIds: const []),
+    ]);
+
+    final service = await _pumpScreen(tester, cache: cache);
+    await tester.pump();
+
+    expect(service.lastAvoidTopics, ['Ordering food', 'Asking directions']);
   });
 
   testWidgets('refusal shows the error state; Try again recovers',

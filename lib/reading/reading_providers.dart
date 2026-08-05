@@ -6,6 +6,7 @@
 library;
 
 import 'dart:developer' as developer;
+import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -47,6 +48,11 @@ final scopeBackfillProvider = Provider<ScopeBackfillService>(
   (ref) => ScopeBackfillService(ref.watch(databaseProvider)),
 );
 
+/// Drives [varietyFocus]'s random picks (D71). A `Provider`, not a bare
+/// constructor default, so tests can override it with a seeded `Random` for
+/// deterministic assertions — same reasoning as the service providers above.
+final readingRandomProvider = Provider<Random>((ref) => Random());
+
 /// Which action the session runs on entry: generate a fresh conversation
 /// (D39, the default), reread the least-recently-practiced cached one
 /// (features/generated-cache.md), or open one specific cached conversation
@@ -73,6 +79,7 @@ final readingSessionProvider = StateNotifierProvider.autoDispose.family<
     ref.watch(conversationStoreProvider),
     ref.watch(scopeBackfillProvider),
     request: request,
+    rng: ref.watch(readingRandomProvider),
   ),
 );
 
@@ -143,8 +150,9 @@ class ReadingSessionState {
 
 class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
   ReadingSessionNotifier(this._seeds, this._service, this._cache, this._backfill,
-      {required ReadingRequest request})
-      : super(const ReadingSessionState.loading()) {
+      {required ReadingRequest request, Random? rng})
+      : _rng = rng ?? Random(),
+        super(const ReadingSessionState.loading()) {
     switch (request.start) {
       case ReadingStart.generate:
         loadNext();
@@ -160,6 +168,10 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
   final ConversationStore _cache;
   final ScopeBackfillService _backfill;
 
+  /// Drives [varietyFocus]'s random picks (D71) — injectable so tests get
+  /// deterministic focus content.
+  final Random _rng;
+
   Future<void> loadNext() async {
     state = const ReadingSessionState.loading();
     try {
@@ -168,7 +180,23 @@ class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {
         await _fail('Nothing to read from yet — import a worksheet first.');
         return;
       }
-      final convo = await _service.generate(seed: seed);
+      final focus = varietyFocus(seed, _rng);
+      // Best-effort: a cache read failure narrows variety, it must never
+      // block generation.
+      var avoidTopics = const <String>[];
+      try {
+        avoidTopics = [
+          for (final c in (await _cache.list()).take(5))
+            if (c.title.isNotEmpty) c.title,
+        ];
+      } catch (_) {
+        // Fall through with the empty default.
+      }
+      final convo = await _service.generate(
+        seed: seed,
+        focus: focus.isEmpty ? null : focus,
+        avoidTopics: avoidTopics,
+      );
       final report = validateScope(convo, seed);
       if (!report.ok) {
         // Out-of-scope output is discarded, not shown (D20/D42) — the learner
