@@ -50,6 +50,46 @@ class FakeBunkoStore implements BunkoStore {
     }
     return null;
   }
+
+  @override
+  Future<FixWordResult> fixWordBaseForm(int id,
+      {required String kana, required String kanji}) async {
+    final index = words.indexWhere((w) => w.id == id);
+    if (index == -1) return const FixWordResult.notFound();
+    final w = words[index];
+    words[index] = BunkoWordRow(
+      id: w.id,
+      kana: kana,
+      kanji: kanji,
+      meaning: w.meaning,
+      role: w.role,
+      kanaOnly: w.kanaOnly,
+      meaningSource: w.meaningSource,
+      status: w.status,
+      notes: w.notes,
+      createdAt: w.createdAt,
+    );
+    return const FixWordResult.updated();
+  }
+
+  @override
+  Future<void> dismissBaseFormSuspicion(int id) async {
+    final index = words.indexWhere((w) => w.id == id);
+    if (index == -1) return;
+    final w = words[index];
+    words[index] = BunkoWordRow(
+      id: w.id,
+      kana: w.kana,
+      kanji: w.kanji,
+      meaning: w.meaning,
+      role: w.role,
+      kanaOnly: w.kanaOnly,
+      meaningSource: w.meaningSource,
+      status: w.status,
+      notes: '${w.notes ?? ''} $baseFormCheckedMarker'.trim(),
+      createdAt: w.createdAt,
+    );
+  }
 }
 
 BunkoWordRow _word(int id, {

@@ -6,6 +6,7 @@ void main() {
     expect(formAnnotation('polite'), 'polite');
     expect(formAnnotation('polite_negative'), 'negative, polite');
     expect(formAnnotation('past'), 'past, polite');
+    expect(formAnnotation('past_negative'), 'past negative, polite');
     expect(formAnnotation('negative'), 'negative');
   });
 

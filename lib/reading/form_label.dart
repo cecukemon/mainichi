@@ -12,6 +12,7 @@ const Map<String, String> _formLabels = {
   'polite': 'polite',
   'polite_negative': 'negative, polite',
   'past': 'past, polite', // ました — the taught past is the polite one
+  'past_negative': 'past negative, polite', // ませんでした
   'negative': 'negative', // i-adjective く form
 };
 

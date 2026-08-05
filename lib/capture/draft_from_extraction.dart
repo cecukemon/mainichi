@@ -16,6 +16,7 @@ library;
 import 'dart:convert';
 
 import '../data/enums.dart';
+import '../japanese/polite_form.dart';
 import 'models.dart';
 
 /// [sourceImage] and [model] are import provenance the extraction JSON itself
@@ -51,12 +52,13 @@ VocabDraftItem _vocabFromExtraction(Map<String, dynamic> v) {
   final kana = v['kana'] as String;
   final kanji = v['kanji'] as String;
   final meaning = v['meaning'] as String;
+  final role = WordRole.fromExtraction(v['role'] as String);
   return VocabDraftItem(
     kana: kana,
     kanji: kanji,
     romaji: v['romaji'] as String,
     meaning: meaning,
-    role: WordRole.fromExtraction(v['role'] as String),
+    role: role,
     kanaOnly: v['kana_only'] as bool,
     meaningSource: MeaningSource.fromExtraction(v['meaning_source'] as String),
     confidence: _confidenceFromExtraction(v['confidence'] as String),
@@ -65,6 +67,11 @@ VocabDraftItem _vocabFromExtraction(Map<String, dynamic> v) {
     kanaCandidates: [kana],
     meaningCandidates: meaning.isEmpty ? const [] : [meaning],
     region: CropRegion.tryParse(v['region']),
+    // A verb extracted in polite form (e.g. もらいます where もらう belongs)
+    // must reach a human even if the extractor was otherwise confident about
+    // it — see politeFormSuspicion and VocabDraftItem.forcedReview.
+    forcedReview:
+        role == WordRole.verb && politeFormSuspicion(kana) != PoliteFormSuspicion.none,
   );
 }
 

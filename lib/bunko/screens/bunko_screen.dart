@@ -11,6 +11,7 @@ import '../../data/enums.dart';
 import '../bunko_providers.dart';
 import '../role_label.dart';
 import '../widgets/structure_detail_sheet.dart';
+import '../widgets/verb_fixup_sheet.dart';
 import '../widgets/word_detail_sheet.dart';
 
 class BunkoScreen extends ConsumerWidget {
@@ -25,6 +26,17 @@ class BunkoScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Bunko'),
+          actions: [
+            if (state.suspectBaseForms.isNotEmpty)
+              IconButton(
+                tooltip: '${state.suspectBaseForms.length} verb base form(s) to check',
+                onPressed: () => showVerbFixupSheet(context),
+                icon: Badge(
+                  label: Text('${state.suspectBaseForms.length}'),
+                  child: const Icon(Icons.spellcheck),
+                ),
+              ),
+          ],
           bottom: const TabBar(tabs: [
             Tab(text: 'Words'),
             Tab(text: 'Structures'),

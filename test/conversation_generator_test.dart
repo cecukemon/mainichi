@@ -481,8 +481,9 @@ void main() {
     });
 
     test('accepts a conjugated surface of a conjugating entry', () {
-      // The polite form must be taught by a structure for 行きます to be in
-      // scope — the factoring check derives its ending set from slot forms.
+      // The polite paradigm is always in scope for any verb (the
+      // always-taught baseline), independent of whether a structure's slot
+      // demands it — this seed's polite slot is incidental here.
       const seedWithVerb = GenerationSeed(
         vocab: [
           SeedWord(id: 20, kana: 'すずき', kanji: '鈴木', role: 'name'),
@@ -551,6 +552,84 @@ void main() {
         seed,
       );
       expect(report.violations.single, contains('does not factor'));
+    });
+
+    test(
+        'past and past-negative pass even when no structure teaches those slot '
+        'forms — the always-taught polite paradigm (the もらいます/もらう bug)',
+        () {
+      // Regression: a verb captured correctly in dictionary form (もらう) must
+      // factor its past and past-negative conjugations even though nothing
+      // in this seed's STRUCTURES has a past or past_negative slot.
+      const seedWithVerb = GenerationSeed(
+        vocab: [
+          SeedWord(id: 20, kana: 'すずき', kanji: '鈴木', role: 'name'),
+          SeedWord(id: 33, kana: 'もらう', role: 'verb'),
+        ],
+        structures: [
+          SeedStructure(
+            id: 5,
+            template: '{verb_1}',
+            slots: [SeedSlot(name: 'verb_1', role: 'verb', form: 'polite')],
+          ),
+        ],
+      );
+
+      final past = validateScope(
+        GeneratedConversation(
+          lines: [
+            GenLine(
+              speakerNameId: 20,
+              speakerSurface: 'すずき',
+              text: 'もらいました',
+              structureId: 0,
+              tokens: const [GenToken(surface: 'もらいました', vocabId: 33)],
+            ),
+          ],
+          usedVocabIds: const [33],
+          usedStructureIds: const [],
+        ),
+        seedWithVerb,
+      );
+      expect(past.ok, isTrue);
+
+      final pastNegative = validateScope(
+        GeneratedConversation(
+          lines: [
+            GenLine(
+              speakerNameId: 20,
+              speakerSurface: 'すずき',
+              text: 'もらいませんでした',
+              structureId: 0,
+              tokens: const [GenToken(surface: 'もらいませんでした', vocabId: 33)],
+            ),
+          ],
+          usedVocabIds: const [33],
+          usedStructureIds: const [],
+        ),
+        seedWithVerb,
+      );
+      expect(pastNegative.ok, isTrue);
+
+      // The te-form is still out of scope — the baseline only covers the
+      // polite paradigm, not every conjugation.
+      final teForm = validateScope(
+        GeneratedConversation(
+          lines: [
+            GenLine(
+              speakerNameId: 20,
+              speakerSurface: 'すずき',
+              text: 'もらって',
+              structureId: 0,
+              tokens: const [GenToken(surface: 'もらって', vocabId: 33)],
+            ),
+          ],
+          usedVocabIds: const [33],
+          usedStructureIds: const [],
+        ),
+        seedWithVerb,
+      );
+      expect(teForm.ok, isFalse);
     });
   });
 

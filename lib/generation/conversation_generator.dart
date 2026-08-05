@@ -112,6 +112,16 @@ class GenerationSeed {
   Set<int> get structureIds => structures.map((s) => s.id).toSet();
   Set<int> get nameIds =>
       vocab.where((w) => w.role == 'name').map((w) => w.id).toSet();
+
+  /// Slot forms in scope for factoring/validation/annotation: the
+  /// course-wide polite-paradigm baseline ([alwaysTaughtVerbForms]) plus
+  /// whatever additional forms this seed's structures demand (e.g.
+  /// i-adjective `negative`, or a future te-form once taught).
+  Set<String> get taughtForms => {
+        ...alwaysTaughtVerbForms,
+        for (final s in structures)
+          for (final sl in s.slots) sl.form,
+      };
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +335,7 @@ Scope — the one hard rule:
 - You MAY freely recombine the grammar the learner already knows — the particles, copula forms, and other pieces in the GRAMMAR GLUE list (は, です, ...), and the patterns in STRUCTURES — into natural sentences, including combinations not written out as a literal STRUCTURE. Prefer the listed STRUCTURES, but a sentence built only from known vocabulary plus these known grammar pieces is in scope even when it is not a listed pattern.
 - Do NOT add honorifics, sentence-final particles, or any other word not in VOCABULARY or GRAMMAR GLUE (e.g. さん, ね, よ) — these have not necessarily been taught yet either, even though they seem minor.
 - Respect each slot's form: a slot with form "negative" takes the negated form (i-adjective おもしろい → おもしろく).
+- Verb conjugations in scope: the dictionary form, and the polite paradigm ます / ません / ました / ませんでした, for ANY verb in VOCABULARY — this is taught for every verb regardless of what a listed STRUCTURE's slot form says. Do NOT use the te-form, plain (dictionary-form) negative, plain past, or any other conjugation not in this list.
 
 Make it one coherent, varied dialogue:
 - Speakers are the VOCABULARY entries whose role is "name". Use at least two; have them take turns naturally.
@@ -571,17 +582,14 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
   final glueMatcher = GlueMatcher(seed.glue);
 
   // Inputs for the factoring check (below): the closed lexicon, and the
-  // conjugation forms the structure library actually teaches — a ます-form
-  // is only in scope once a taught pattern demands it (dictionary always is).
+  // conjugation forms in scope — the course-wide polite paradigm (always
+  // taught, see alwaysTaughtVerbForms) plus whatever else this seed's
+  // structures demand (e.g. i-adjective negative).
   final lexicon = [
     for (final w in seed.vocab)
       LexiconEntry(id: w.id, kana: w.kana, kanji: w.kanji, role: w.role),
   ];
-  final taughtForms = {
-    'dictionary',
-    for (final s in seed.structures)
-      for (final sl in s.slots) sl.form,
-  };
+  final taughtForms = seed.taughtForms;
 
   for (var i = 0; i < convo.lines.length; i++) {
     final line = convo.lines[i];

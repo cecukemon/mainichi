@@ -17,6 +17,7 @@ import '../data/enums.dart' show GlueKind;
 import '../data/seed_repository.dart';
 import '../generation/conversation_generator.dart';
 import '../generation/generation_client.dart';
+import '../japanese/segmenter.dart' show alwaysTaughtVerbForms;
 import '../settings/api_key_store.dart';
 import '../settings/settings_providers.dart';
 import '../capture/capture_providers.dart' show databaseProvider;
@@ -138,14 +139,10 @@ class ReadingSessionState {
   /// non-scope errors, so chips render only when there's something to add.
   final List<String> candidates;
 
-  /// Slot forms the structure library actually teaches — what
-  /// `detectTaughtForm` is allowed to recognize on a tapped word.
-  Set<String> get taughtForms => {
-        'dictionary',
-        if (seed != null)
-          for (final s in seed!.structures)
-            for (final slot in s.slots) slot.form,
-      };
+  /// Slot forms in scope for the tapped-word lookup sheet — the course-wide
+  /// polite-paradigm baseline plus whatever this seed's structures demand.
+  /// See `GenerationSeed.taughtForms`.
+  Set<String> get taughtForms => seed?.taughtForms ?? alwaysTaughtVerbForms;
 }
 
 class ReadingSessionNotifier extends StateNotifier<ReadingSessionState> {

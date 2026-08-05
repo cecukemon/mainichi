@@ -9,6 +9,7 @@ import 'package:meta/meta.dart';
 import '../capture/capture_providers.dart' show databaseProvider;
 import '../data/bunko_store.dart';
 import '../data/enums.dart';
+import '../japanese/polite_form.dart';
 
 final bunkoStoreProvider = Provider<BunkoStore>(
   (ref) => DriftBunkoStore(ref.watch(databaseProvider)),
@@ -54,6 +55,19 @@ class BunkoState {
     }
     return counts;
   }
+
+  /// Approved verbs whose kana looks like a polite-paradigm conjugation
+  /// rather than dictionary form (e.g. もらいます stored instead of もらう),
+  /// and haven't been manually confirmed as a legitimate ます-ending verb —
+  /// the fix-up sheet's worklist.
+  List<BunkoWordRow> get suspectBaseForms => [
+        for (final w in words)
+          if (w.role == WordRole.verb &&
+              w.status == ItemStatus.approved &&
+              politeFormSuspicion(w.kana) != PoliteFormSuspicion.none &&
+              w.notes?.contains(baseFormCheckedMarker) != true)
+            w,
+      ];
 
   BunkoState copyWith({
     List<BunkoWordRow>? words,

@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mainichi/data/bunko_store.dart';
@@ -158,6 +158,195 @@ void main() {
 
     test('returns null for a missing id', () async {
       expect(await store.structureById(999), isNull);
+    });
+  });
+
+  group('fixWordBaseForm', () {
+    test('rewrites kana/kanji in place when no existing entry collides',
+        () async {
+      final id = await db.into(db.words).insert(WordsCompanion.insert(
+            kana: 'もらいます',
+            role: WordRole.verb,
+            status: const Value(ItemStatus.approved),
+          ));
+
+      final result =
+          await store.fixWordBaseForm(id, kana: 'もらう', kanji: '');
+
+      expect(result.outcome, FixWordOutcome.updated);
+      final row = await (db.select(db.words)..where((w) => w.id.equals(id)))
+          .getSingle();
+      expect(row.kana, 'もらう');
+    });
+
+    test('returns notFound for a missing id', () async {
+      final result =
+          await store.fixWordBaseForm(999, kana: 'もらう', kanji: '');
+      expect(result.outcome, FixWordOutcome.notFound);
+    });
+
+    test(
+        'merges into an existing dictionary-form entry on a unique-key '
+        'collision, filling gaps and repointing dependents', () async {
+      final targetId = await db.into(db.words).insert(WordsCompanion.insert(
+            kana: 'もらう',
+            role: WordRole.verb,
+            status: const Value(ItemStatus.approved),
+          ));
+      final sourceId = await db.into(db.words).insert(WordsCompanion.insert(
+            kana: 'もらいます',
+            role: WordRole.verb,
+            status: const Value(ItemStatus.approved),
+            meaning: const Value('to receive'),
+            notes: const Value('polite form printed'),
+          ));
+      await db.into(db.exampleSentences).insert(
+          ExampleSentencesCompanion.insert(
+              sentence: 'プレゼントをもらいます。', wordId: Value(sourceId)));
+
+      final conversationId = await db.into(db.generatedConversations).insert(
+          GeneratedConversationsCompanion.insert(
+              payloadJson: '{}', lineCount: 1));
+      await db.into(db.conversationWords).insert(ConversationWordsCompanion(
+          conversationId: Value(conversationId), wordId: Value(sourceId)));
+
+      await db.into(db.srsCards).insert(SrsCardsCompanion.insert(
+          itemType: SrsItemType.word, itemId: sourceId));
+
+      final result =
+          await store.fixWordBaseForm(sourceId, kana: 'もらう', kanji: '');
+
+      expect(result.outcome, FixWordOutcome.merged);
+      expect(result.mergedIntoId, targetId);
+
+      // Source row is gone.
+      expect(
+          await (db.select(db.words)..where((w) => w.id.equals(sourceId)))
+              .getSingleOrNull(),
+          isNull);
+
+      // Fill-the-gap: target had no meaning/notes, so the source's are kept.
+      final target = await (db.select(db.words)
+            ..where((w) => w.id.equals(targetId)))
+          .getSingle();
+      expect(target.meaning, 'to receive');
+      expect(target.notes, 'polite form printed');
+
+      // Example sentence repointed onto the target, not lost to cascade.
+      final examples = await (db.select(db.exampleSentences)
+            ..where((e) => e.wordId.equals(targetId)))
+          .get();
+      expect(examples.map((e) => e.sentence), ['プレゼントをもらいます。']);
+
+      // ConversationWords repointed onto the target.
+      final convWords = await (db.select(db.conversationWords)
+            ..where((r) => r.conversationId.equals(conversationId)))
+          .get();
+      expect(convWords.map((r) => r.wordId), [targetId]);
+
+      // SrsCards repointed onto the target (no card existed there yet).
+      final srsCards = await (db.select(db.srsCards)
+            ..where((c) =>
+                c.itemType.equalsValue(SrsItemType.word) &
+                c.itemId.equals(targetId)))
+          .get();
+      expect(srsCards, hasLength(1));
+    });
+
+    test('never overwrites an existing meaning/notes/kanji on merge',
+        () async {
+      final targetId = await db.into(db.words).insert(WordsCompanion.insert(
+            kana: 'もらう',
+            kanji: const Value('貰う'),
+            role: WordRole.verb,
+            meaning: const Value('to get (already known)'),
+          ));
+      final sourceId = await db.into(db.words).insert(WordsCompanion.insert(
+            kana: 'もらいます',
+            role: WordRole.verb,
+            meaning: const Value('to receive (different gloss)'),
+          ));
+
+      await store.fixWordBaseForm(sourceId, kana: 'もらう', kanji: '貰う');
+
+      final target = await (db.select(db.words)
+            ..where((w) => w.id.equals(targetId)))
+          .getSingle();
+      expect(target.meaning, 'to get (already known)');
+      expect(target.kanji, '貰う');
+    });
+
+    test(
+        'a conversation referencing both source and target does not throw '
+        'on the composite-key collision', () async {
+      final targetId = await db.into(db.words).insert(
+          WordsCompanion.insert(kana: 'もらう', role: WordRole.verb));
+      final sourceId = await db.into(db.words).insert(
+          WordsCompanion.insert(kana: 'もらいます', role: WordRole.verb));
+      final conversationId = await db.into(db.generatedConversations).insert(
+          GeneratedConversationsCompanion.insert(
+              payloadJson: '{}', lineCount: 1));
+      await db.into(db.conversationWords).insert(ConversationWordsCompanion(
+          conversationId: Value(conversationId), wordId: Value(targetId)));
+      await db.into(db.conversationWords).insert(ConversationWordsCompanion(
+          conversationId: Value(conversationId), wordId: Value(sourceId)));
+
+      final result =
+          await store.fixWordBaseForm(sourceId, kana: 'もらう', kanji: '');
+
+      expect(result.outcome, FixWordOutcome.merged);
+      final convWords = await (db.select(db.conversationWords)
+            ..where((r) => r.conversationId.equals(conversationId)))
+          .get();
+      expect(convWords.map((r) => r.wordId), [targetId]); // deduped, not doubled
+    });
+
+    test('an existing SrsCard on the target wins; the source card is dropped',
+        () async {
+      final targetId = await db.into(db.words).insert(
+          WordsCompanion.insert(kana: 'もらう', role: WordRole.verb));
+      final sourceId = await db.into(db.words).insert(
+          WordsCompanion.insert(kana: 'もらいます', role: WordRole.verb));
+      await db.into(db.srsCards).insert(SrsCardsCompanion.insert(
+          itemType: SrsItemType.word, itemId: targetId));
+      await db.into(db.srsCards).insert(SrsCardsCompanion.insert(
+          itemType: SrsItemType.word, itemId: sourceId));
+
+      await store.fixWordBaseForm(sourceId, kana: 'もらう', kanji: '');
+
+      final cards = await (db.select(db.srsCards)
+            ..where((c) => c.itemType.equalsValue(SrsItemType.word)))
+          .get();
+      expect(cards.map((c) => c.itemId), [targetId]);
+    });
+  });
+
+  group('dismissBaseFormSuspicion', () {
+    test('appends the checked marker to notes', () async {
+      final id = await db.into(db.words).insert(
+          WordsCompanion.insert(kana: 'はげます', role: WordRole.verb));
+
+      await store.dismissBaseFormSuspicion(id);
+
+      final row = await (db.select(db.words)..where((w) => w.id.equals(id)))
+          .getSingle();
+      expect(row.notes, contains(baseFormCheckedMarker));
+    });
+
+    test('is idempotent — does not duplicate the marker', () async {
+      final id = await db.into(db.words).insert(WordsCompanion.insert(
+            kana: 'はげます',
+            role: WordRole.verb,
+            notes: const Value('励ます — encourage'),
+          ));
+
+      await store.dismissBaseFormSuspicion(id);
+      await store.dismissBaseFormSuspicion(id);
+
+      final row = await (db.select(db.words)..where((w) => w.id.equals(id)))
+          .getSingle();
+      expect(baseFormCheckedMarker.allMatches(row.notes!).length, 1);
+      expect(row.notes, contains('励ます — encourage'));
     });
   });
 }
