@@ -8,6 +8,8 @@ Covers the speaking exercise of spec §5 as phase 4 of the build order (§8: "hi
 
 The ladder honors §8's philosophy (each step de-risks the next): shadowing lands mic UX and recording permissions, read-aloud lands STT and the match-strictness calibration loop against *known* expected text, and free conversation then only adds the turn-based generation machinery on top of calibrated, trusted STT.
 
+**UI note (D73, 2026-08-06):** rung 2 shipped as a standalone mode (§3, D67) and stayed one for two weeks of live use. In practice it turned out to be shadowing's UX with an extra step, so its grading — the STT plumbing, the grader, all of it — was folded into rung 1's hold row as an optional "Check me" step, and the standalone mode was removed. §2 describes the merged shape; §3 is kept for the STT/grader mechanics, which are unchanged.
+
 ---
 
 ## 1. What "grading" means here (and what it doesn't)
@@ -18,25 +20,30 @@ Per spec §5, **the raw STT transcript is always surfaced** alongside any verdic
 
 ---
 
-## 2. Mode 1 — Shadowing (ungraded, ships first)
+## 2. Mode 1 — Shadowing, with an optional "Check me" grade — *implemented, D66 + D73*
 
 A playback mode on the existing listening layer: play line → pause → the learner repeats aloud → advance to the next line. Explicitly **no recording analysis and no grading in v1** (D63) — shadowing is pedagogically well-supported even ungraded, and shipping it ungraded gets the mic permission flow and speaking UX in place without waiting on STT.
 
 - Reuses the per-line audio files, voices, and playback controller from `lib/listening/` — the new piece is the paced advance (play, gap for the learner's repetition, next) rather than continuous playback.
-- The repetition gap should be learner-controlled (tap-to-advance) rather than a timer, at least in v1 — no guessing how long a beginner needs.
-- Optionally records the learner (for self-playback comparison), but even that can wait; the mode is useful with zero mic code.
-- Known limitation, accepted: produces no data for phase 5's SRS and tests imitation, not production. That's what the higher rungs are for.
+- The repetition gap is learner-controlled (tap-to-advance), never a timer — no guessing how long a beginner needs.
+- Known limitation, accepted: produces no data for phase 5's SRS and tests imitation, not production. That's what rung 3 is for.
 
-## 3. Mode 2 — Read-aloud (first graded mode) — *implemented, D67*
+**Grading, folded in at D73 (2026-08-06).** The hold row ("Your turn — say it aloud") gained an optional **"Check me"** button, reusing rung 2's plumbing (`ReadAloudController`, `SttService`, `SpeechRecorder`, `gradeReadAloud` — see §3 for the mechanics) instead of that plumbing living behind a separate mode:
+- Tap "Check me" → records the currently held line → tap "Stop & check" → transcribes → grades against that line's written `text`, same as rung 2 always did. The verdict + "Heard: …" transcript render under the line in the conversation feed, exactly where rung 2 put them.
+- **Grading is opt-in and never gates advancing** — "Hear it again" and "Next line" stay available the whole time; only the recording/transcribing window itself disables them (can't record over playback, can't advance out from under an in-flight recording). This is D63's learner-paced principle carried through: the verdict is a hint, not a checkpoint.
+- The per-line margin mic and the read-aloud audio-bar toggle are gone — the margin always shows the replay control now, and there are only two audio-bar toggles (shadowing, listening-mode). Turning shadowing off, or stopping playback, cancels an in-flight check (`ReadAloudController.cancel()`) rather than orphaning it.
+- Checking only ever targets the line currently held by shadowing — there's no way to spot-check an arbitrary line without shadowing it first, unlike rung 2's original per-line mic-anywhere shape. That's the accepted trade for folding two similar controls into one.
 
-The learner reads the current conversation aloud, line by line; the app records, sends to Google Cloud Speech-to-Text, and compares the transcript against the expected line. This is the tractable shape spec §5 counted on: **the expected text is known**, so grading is transcript-vs-expected comparison, not open-ended judgment.
+## 3. STT/grading mechanics (built as rung 2, "Read-aloud" — now Check-me's engine, §2)
 
-- **Verdict = "STT heard the right words"** (D64), shown per line as one of match / close / mismatch, with the raw transcript always visible beneath it. Match strictness is the calibration loop the spec warned about — the comparator (`gradeReadAloud`, `lib/speaking/read_aloud_grader.dart`) is a small pure function with its own tests and two documented threshold knobs (0.95 match / 0.7 close over normalized Levenshtein similarity), untuned until there's real spoken data.
+The mic records the line being checked; the app sends it to Google Cloud Speech-to-Text and compares the transcript against the expected line. This is the tractable shape spec §5 counted on: **the expected text is known**, so grading is transcript-vs-expected comparison, not open-ended judgment.
+
+- **Verdict = "STT heard the right words"** (D64), one of match / close / mismatch, with the raw transcript always visible beneath it. Match strictness is the calibration loop the spec warned about — the comparator (`gradeReadAloud`, `lib/speaking/read_aloud_grader.dart`) is a small pure function with its own tests and two documented threshold knobs (0.95 match / 0.7 close over normalized Levenshtein similarity), untuned until there's real spoken data.
 - **What it compares — the load-bearing call:** Google STT for Japanese returns ordinary orthography (kanji+kana), *not* the kana the TTS speaks from. So the grader compares against each line's written `text`, **not** its `kanaLine`. Known limitation: a reading-correct but orthography-different transcript (お寿司 vs すし, 寿司 vs すし) can score below a strict match purely on character choice. This is precisely why the raw transcript is always surfaced (spec §5): the verdict is a hint, the transcript is the truth, and an orthography-only miss reads as "close — check what it heard", not a hard fail.
-- Side value: with furigana off, reading aloud tests kanji **readings** — a skill no other exercise checks actively.
+- Side value: with furigana off, checking a line tests kanji **readings** — a skill no other exercise checks actively.
 - STT is behind an `SttService` interface mirroring `TtsService` (`lib/speaking/stt_service.dart`, dio, key fresh per call). Cloud TTS and STT take the same API key, so the existing Google key slot is reused — no third slot.
 - Mic capture is behind a `SpeechRecorder` interface (`lib/speaking/speech_recorder.dart`) over the `record` package; recordings are transient WAV input, deleted after transcription — no audio file store analogue. iOS mic permission declared in Info.plist.
-- **UI:** a fourth audio-bar toggle (mic icon), mutually exclusive with shadowing and listening-mode. In read-aloud mode each line's margin shows a mic (→ stop while recording, spinner while transcribing) in place of the replay control, and the verdict badge + "Heard: …" transcript renders under the line. `ReadAloudController` (`lib/speaking/read_aloud_controller.dart`) runs one line at a time, keyed per conversation like the listening controller.
+- `ReadAloudController` (`lib/speaking/read_aloud_controller.dart`) runs one line at a time, keyed per conversation like the listening controller — unchanged since D67, only its caller (the shadowing hold row, not a standalone mode) moved at D73.
 
 ## 4. Mode 3 — Free conversation (the destination) — *implemented, D69*
 
@@ -57,8 +64,8 @@ The spec §5 challenge/response mode (app asks, learner answers, engine knows th
 ## 5. Build order within the phase
 
 1. **Shadowing mode** — *done (D66, 2026-07-19).* Built as a `shadowing` flag + `AudioStatus.awaitingRepeat` hold on the existing `ListeningController` rather than a new screen; toggle on the audio bar, "Your turn" hold row with Next line / Hear it again / Done, learner-paced (no timer), no mic code. Live simulator run pending.
-2. **Read-aloud** — *done (D67, 2026-07-19).* `SttService` + `SpeechRecorder` behind interfaces (Google key slot reused, `record` package), pure `gradeReadAloud` comparator, per-line mic + verdict/transcript UI on the reading screen. Match strictness untuned by design; live device run (real mic + key) pending.
-3. Free conversation — *done (D69, 2026-07-21).* Separate screen + `FreeConversationController`, one combined grade+generate call sharing generation's cached prefix, `validateNextLine` reusing `validateScope`, retry-then-inline-error rejection handling, per-turn verdict + rewrite UI. Backfill hook deferred (v1 grades + generates only). Live device run pending.
+2. **Read-aloud** — *done (D67, 2026-07-19); folded into rung 1 as "Check me" (D73, 2026-08-06).* `SttService` + `SpeechRecorder` behind interfaces (Google key slot reused, `record` package), pure `gradeReadAloud` comparator — all unchanged. What changed: it shipped as a standalone audio-bar mode with a per-line margin mic, then two weeks of live use showed that was shadowing's UX plus an extra step, so the mic moved onto the shadowing hold row and the standalone mode was removed. Match strictness still untuned by design; live device run (real mic + key) pending.
+3. Free conversation — *done (D69, 2026-07-21); app-line TTS resolved (D72, 2026-08-06).* Separate screen + `FreeConversationController`, one combined grade+generate call sharing generation's cached prefix, `validateNextLine` reusing `validateScope`, retry-then-inline-error rejection handling, per-turn verdict + rewrite UI. Backfill hook still deferred (v1 grades + generates only). Live device run pending.
 
 Each rung is independently shippable and independently useful; there is no need to commit to rung 3's open questions before rung 1 exists.
 

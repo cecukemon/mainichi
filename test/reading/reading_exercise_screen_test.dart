@@ -75,7 +75,7 @@ final _conversation = GeneratedConversation(
 );
 
 /// A six-line in-scope conversation (the two valid lines, alternating) so the
-/// feed overflows a short viewport — used to exercise read-aloud auto-scroll.
+/// feed overflows a short viewport — used to exercise shadowing auto-scroll.
 GeneratedConversation _sixLineConversation() {
   final a = _conversation.lines[0];
   final b = _conversation.lines[1];
@@ -1034,7 +1034,7 @@ void main() {
     expect(find.byTooltip('Play'), findsOneWidget); // back to idle
   });
 
-  testWidgets('audio bar fits a phone width with all four toggles (no overflow)',
+  testWidgets('audio bar fits a phone width with both toggles (no overflow)',
       (tester) async {
     // The default test surface is 800px wide, so a too-wide audio bar only
     // overflows on a real phone. Pin an iPhone-ish width to catch it.
@@ -1051,38 +1051,94 @@ void main() {
     // All controls still present at this width.
     expect(find.byTooltip('Play'), findsOneWidget);
     expect(find.byTooltip('Shadowing (repeat after each line)'), findsOneWidget);
-    expect(find.byTooltip('Read aloud (check your pronunciation)'),
-        findsOneWidget);
     expect(find.byTooltip('Listening mode (hide text)'), findsOneWidget);
   });
 
-  testWidgets('read-aloud: record a line, get a verdict and the transcript',
+  testWidgets(
+      'check me: recording the held line during shadowing shows a verdict and transcript (D73)',
       (tester) async {
+    final player = FakeLinePlayer();
     final recorder = FakeSpeechRecorder();
     // FakeStt defaults to line 0's text (minus spacing/punctuation) → a match.
-    await _pumpScreen(tester, recorder: recorder);
+    await _pumpScreen(tester, player: player, recorder: recorder);
     await tester.pump();
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.tap(find.byTooltip('Shadowing (repeat after each line)'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Play'));
     await tester.pumpAndSettle();
-    // A mic per line; no verdicts yet.
-    expect(find.byTooltip('Record this line'), findsNWidgets(2));
+    expect(find.text('Your turn — say it aloud'), findsOneWidget);
+    expect(find.text('Check me'), findsOneWidget);
     expect(find.text('Sounds right'), findsNothing);
 
-    await tester.tap(find.byTooltip('Record this line').first);
+    await tester.tap(find.text('Check me'));
     await tester.pumpAndSettle();
     expect(recorder.starts, 1);
-    expect(find.byTooltip('Stop and check'), findsOneWidget);
+    expect(find.text('Stop & check'), findsOneWidget);
     expect(find.textContaining('Recording…'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Stop and check'));
+    await tester.tap(find.text('Stop & check'));
     await tester.pumpAndSettle();
     expect(find.text('Sounds right'), findsOneWidget);
     expect(find.text('Heard: 田中はすしを食べますか'), findsOneWidget);
+
+    // Grading is optional — advancing right after still works (D63's
+    // learner-paced spirit; the verdict is a hint, never a gate).
+    await tester.tap(find.text('Next line'));
+    await tester.pumpAndSettle();
+    expect(find.text('Done'), findsOneWidget); // second (last) line's hold
   });
 
-  testWidgets('read-aloud scrolls the active line into view', (tester) async {
+  testWidgets('Hear it again and Next line are disabled while checking (D73)',
+      (tester) async {
+    final player = FakeLinePlayer();
+    await _pumpScreen(tester, player: player);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Shadowing (repeat after each line)'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Play'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Check me'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stop & check'), findsOneWidget);
+
+    final hearItAgain =
+        tester.widget<TextButton>(find.widgetWithText(TextButton, 'Hear it again'));
+    expect(hearItAgain.onPressed, isNull);
+    final nextLine =
+        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Next line'));
+    expect(nextLine.onPressed, isNull);
+  });
+
+  testWidgets('turning off shadowing cancels an in-flight check (D73)',
+      (tester) async {
+    final player = FakeLinePlayer();
+    final recorder = FakeSpeechRecorder();
+    await _pumpScreen(tester, player: player, recorder: recorder);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Shadowing (repeat after each line)'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Play'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Check me'));
+    await tester.pumpAndSettle();
+    expect(recorder.starts, 1);
+    expect(recorder.cancels, 0);
+
+    await tester.tap(find.byTooltip('Turn off shadowing'));
+    await tester.pumpAndSettle();
+    expect(recorder.cancels, 1);
+    expect(find.text('Stop & check'), findsNothing);
+  });
+
+  testWidgets('shadowing scrolls the active line into view', (tester) async {
     // A short viewport so the six-line feed overflows and a lower line
     // starts below the fold.
     tester.view.physicalSize = const Size(400, 640);
@@ -1090,71 +1146,87 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await _pumpScreen(tester, results: [_sixLineConversation()]);
+    final player = FakeLinePlayer();
+    await _pumpScreen(tester,
+        results: [_sixLineConversation()], player: player);
     await tester.pump();
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Shadowing (repeat after each line)'));
+    await tester.pump();
 
     final listFinder = find.byType(Scrollable).first;
     final before = tester.state<ScrollableState>(listFinder).position.pixels;
     expect(before, 0.0); // starts at the top
 
-    // Record a line low enough to require scrolling to sit in the upper third.
-    await tester.tap(find.byTooltip('Record this line').at(2));
+    // Jump straight to a line low enough to require scrolling to sit in the
+    // upper third — the margin replay re-enters the shadowing chain there.
+    await tester.tap(find.byTooltip('Play this line').at(2));
     await tester.pumpAndSettle();
 
     final after = tester.state<ScrollableState>(listFinder).position.pixels;
     expect(after, greaterThan(before)); // the feed scrolled down to it
   });
 
-  testWidgets('read-aloud: a mismatch shows the raw transcript, not a pass',
+  testWidgets('check me: a mismatch shows the raw transcript, not a pass',
       (tester) async {
-    await _pumpScreen(tester, stt: FakeStt('こんにちは'));
+    final player = FakeLinePlayer();
+    await _pumpScreen(tester, player: player, stt: FakeStt('こんにちは'));
     await tester.pump();
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.tap(find.byTooltip('Shadowing (repeat after each line)'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Play'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Record this line').first);
+    await tester.tap(find.text('Check me'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Stop and check'));
+    await tester.tap(find.text('Stop & check'));
     await tester.pumpAndSettle();
 
     expect(find.text("Didn't match"), findsOneWidget);
     expect(find.text('Heard: こんにちは'), findsOneWidget);
   });
 
-  testWidgets('read-aloud: denied mic permission explains itself on the line',
+  testWidgets('check me: denied mic permission explains itself on the line',
       (tester) async {
-    await _pumpScreen(tester, recorder: FakeSpeechRecorder()..permission = false);
+    final player = FakeLinePlayer();
+    await _pumpScreen(tester,
+        player: player, recorder: FakeSpeechRecorder()..permission = false);
     await tester.pump();
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.tap(find.byTooltip('Shadowing (repeat after each line)'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Play'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Record this line').first);
+    await tester.tap(find.text('Check me'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Microphone access is off'), findsOneWidget);
   });
 
-  testWidgets('read-aloud and listening mode are mutually exclusive',
+  testWidgets("check me is unaffected by listening mode — it lives on the audio bar, never blurred (D73)",
       (tester) async {
-    await _pumpScreen(tester);
+    final player = FakeLinePlayer();
+    final recorder = FakeSpeechRecorder();
+    await _pumpScreen(tester, player: player, recorder: recorder);
     await tester.pump();
     await tester.pump();
 
-    await tester.tap(find.byTooltip('Read aloud (check your pronunciation)'));
+    await tester.tap(find.byTooltip('Shadowing (repeat after each line)'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Play'));
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Record this line'), findsNWidgets(2));
+    expect(find.text('Check me'), findsOneWidget);
 
-    // Turning on listening mode drops read-aloud.
     await tester.tap(find.byTooltip('Listening mode (hide text)'));
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Record this line'), findsNothing);
-    expect(find.byType(ImageFiltered), findsOneWidget);
+    expect(find.text('Check me'), findsOneWidget);
+
+    await tester.tap(find.text('Check me'));
+    await tester.pumpAndSettle();
+    expect(recorder.starts, 1);
   });
 
   testWidgets('a failed synthesis shows an inline audio error, text stays',
