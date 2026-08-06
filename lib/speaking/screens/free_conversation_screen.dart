@@ -17,6 +17,7 @@ import '../../reading/furigana_text.dart';
 import '../../reading/reading_providers.dart' show seedSourceProvider;
 import '../../reading/word_lookup_sheet.dart';
 import '../conversation_turn.dart';
+import '../free_conv_audio.dart';
 import '../free_conversation_controller.dart';
 import '../speaking_providers.dart';
 
@@ -31,6 +32,7 @@ class FreeConversationScreen extends ConsumerStatefulWidget {
 class _FreeConversationScreenState
     extends ConsumerState<FreeConversationScreen> {
   FreeConversationController? _controller;
+  FreeConvAudioController? _audio;
   GenerationSeed? _seed;
   Object? _bootstrapError;
   final ScrollController _scroll = ScrollController();
@@ -53,10 +55,12 @@ class _FreeConversationScreenState
         service: ref.read(conversationServiceProvider),
         seed: seed,
       );
+      final audio = ref.read(freeConvAudioControllerFactoryProvider)(seed);
       controller.addListener(_scrollToBottomSoon);
       setState(() {
         _seed = seed;
         _controller = controller;
+        _audio = audio;
       });
       controller.start();
     } catch (error) {
@@ -83,6 +87,7 @@ class _FreeConversationScreenState
   void dispose() {
     _controller?.removeListener(_scrollToBottomSoon);
     _controller?.dispose();
+    _audio?.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -110,11 +115,12 @@ class _FreeConversationScreenState
       );
     }
     final controller = _controller;
-    if (controller == null) {
+    final audio = _audio;
+    if (controller == null || audio == null) {
       return const Center(child: CircularProgressIndicator());
     }
     return ListenableBuilder(
-      listenable: controller,
+      listenable: Listenable.merge([controller, audio]),
       builder: (context, _) {
         if (controller.status == FreeConvStatus.loadingOpening) {
           return const _CenteredMessage(
@@ -124,7 +130,7 @@ class _FreeConversationScreenState
         }
         return Column(
           children: [
-            Expanded(child: _buildTurns(controller)),
+            Expanded(child: _buildTurns(controller, audio)),
             const Divider(height: 1),
             _BottomBar(
               controller: controller,
@@ -137,7 +143,8 @@ class _FreeConversationScreenState
     );
   }
 
-  Widget _buildTurns(FreeConversationController controller) {
+  Widget _buildTurns(
+      FreeConversationController controller, FreeConvAudioController audio) {
     // A leading spinner state with no turns yet (opening error already handled)
     // is only the empty guard's error, shown in the bottom bar; keep the list.
     return ListView.builder(
@@ -153,6 +160,8 @@ class _FreeConversationScreenState
               line: turn.appLine,
               seed: _seed!,
               taughtForms: _taughtForms,
+              turnIndex: i,
+              audio: audio,
             ),
             if (turn.answered)
               _LearnerReplyView(
@@ -167,31 +176,60 @@ class _FreeConversationScreenState
   }
 }
 
-/// One persona line: the name, then the tokens with furigana + tap lookup.
+/// One persona line: the name and a speak button (D72 — hear this line in
+/// the persona's voice, synthesized on tap via [FreeConvAudioController]),
+/// then the tokens with furigana + tap lookup.
 class _AppLineView extends StatelessWidget {
   const _AppLineView({
     required this.line,
     required this.seed,
     required this.taughtForms,
+    required this.turnIndex,
+    required this.audio,
   });
 
   final GenLine line;
   final GenerationSeed seed;
   final Set<String> taughtForms;
+  final int turnIndex;
+  final FreeConvAudioController audio;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tokens = displayTokens(line, seed);
+    final isActive = audio.activeTurn == turnIndex;
+    final status = isActive ? audio.status : FreeConvAudioStatus.idle;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          line.speakerSurface,
-          style: theme.textTheme.labelMedium
-              ?.copyWith(color: theme.colorScheme.primary),
+        Row(
+          children: [
+            Text(
+              line.speakerSurface,
+              style: theme.textTheme.labelMedium
+                  ?.copyWith(color: theme.colorScheme.primary),
+            ),
+            const SizedBox(width: 4),
+            _SpeakButton(
+              status: status,
+              onTap: status == FreeConvAudioStatus.playing
+                  ? audio.stop
+                  : () => audio.playTurn(turnIndex, line),
+            ),
+          ],
         ),
-        const SizedBox(height: 2),
+        if (isActive && audio.status == FreeConvAudioStatus.error)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              audio.errorMessage,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.error),
+            ),
+          )
+        else
+          const SizedBox(height: 2),
         Wrap(
           crossAxisAlignment: WrapCrossAlignment.end,
           children: [
@@ -200,6 +238,42 @@ class _AppLineView extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// The per-line speak/stop control: a speaker icon when idle, a small
+/// spinner while synthesis is in flight, a stop icon while sounding.
+class _SpeakButton extends StatelessWidget {
+  const _SpeakButton({required this.status, required this.onTap});
+
+  final FreeConvAudioStatus status;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (status == FreeConvAudioStatus.preparing) {
+      return const Padding(
+        padding: EdgeInsets.all(4),
+        child: SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    final playing = status == FreeConvAudioStatus.playing;
+    return IconButton(
+      icon: Icon(
+          playing ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
+          size: 18),
+      tooltip: playing ? 'Stop' : 'Hear this line',
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      color: theme.colorScheme.onSurfaceVariant,
+      onPressed: onTap,
     );
   }
 }
