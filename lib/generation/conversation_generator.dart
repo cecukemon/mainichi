@@ -418,7 +418,7 @@ Map<String, dynamic> buildGenerationRequest({
   /// costs nothing unless a conversation actually needs it, and 8000 stays
   /// well inside the safe non-streaming range for the blocking `dio` POST
   /// (same reasoning as the extraction cap, D54).
-  int maxTokens = 8000,
+  int maxTokens = 10000,
 
   /// Optional topic/vocabulary steer, e.g. "eating, drinking, and going
   /// somewhere". Doesn't relax scope — just nudges which in-scope material the
