@@ -8,6 +8,9 @@
 /// a blur-the-text listening mode. Audio never autoplays. Shadowing mode
 /// (D63, features/speaking-exercise.md §2) rides on the same player row:
 /// playback holds after each line — "Your turn" — until the learner taps on.
+/// The hold also carries an optional "Check me" grading step (D73): record
+/// the held line, check it against Google STT, see the verdict — folded in
+/// from what used to be a standalone read-aloud mode.
 library;
 
 import 'dart:ui' show ImageFilter;
@@ -330,7 +333,6 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   ListeningController? _audio;
   ReadAloudController? _readAloud;
   bool _blurred = false;
-  bool _readAloudMode = false;
 
   /// One key per line so the active line can be scrolled into view.
   late final List<GlobalKey> _lineKeys;
@@ -358,9 +360,9 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
         conversationId: id,
         lines: lineAudioSpecs(widget.conversation, widget.seed),
       );
-      // Read-aloud grades against each line's written text (orthography, not
-      // kana — see read_aloud_grader.dart). Gated on the same conversationId
-      // as audio: both live on the player row.
+      // Grades against each line's written text (orthography, not kana — see
+      // read_aloud_grader.dart). Gated on the same conversationId as audio:
+      // "Check me" only exists inside the shadowing hold on the player row.
       _readAloud = ReadAloudController(
         recorder: ref.read(speechRecorderFactoryProvider)(),
         stt: ref.read(sttServiceProvider),
@@ -369,12 +371,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     }
   }
 
-  /// The line currently highlighted, across every mode: the active read-aloud
-  /// line when that mode is on, otherwise the line sounding during playback or
+  /// The line currently highlighted: the line sounding during playback or
   /// held for shadowing (also highlighted, if blurred, in listening mode).
   /// Null when nothing is highlighted.
-  int? _activeLine(ListeningController? audio, ReadAloudController? readAloud) {
-    if (_readAloudMode && readAloud != null) return readAloud.activeLine;
+  int? _activeLine(ListeningController? audio) {
     if (audio != null &&
         (audio.status == AudioStatus.playing ||
             audio.status == AudioStatus.awaitingRepeat)) {
@@ -383,10 +383,10 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     return null;
   }
 
-  /// Scrolls the highlighted line into view when it changes, so the line being
-  /// read or heard (and, in read-aloud mode, its verdict just below) stays
-  /// visible even when it started below the fold. A post-frame callback
-  /// because the scroll must run after the line has laid out.
+  /// Scrolls the highlighted line into view when it changes, so the line
+  /// being read or heard (and, during a "Check me" grade, its verdict just
+  /// below) stays visible even when it started below the fold. A post-frame
+  /// callback because the scroll must run after the line has laid out.
   void _maybeScrollToActiveLine(int? activeLine) {
     if (activeLine == null) {
       _scrolledForLine = null;
@@ -435,43 +435,27 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
     super.dispose();
   }
 
-  // The three practice modes are mutually exclusive: you can't read aloud
-  // blurred text, and recording while audio plays is incoherent. Turning one
-  // on backs the others out (cancelling any in-flight recording).
-  void _toggleReadAloud() {
-    setState(() {
-      _readAloudMode = !_readAloudMode;
-      if (_readAloudMode) {
-        _blurred = false;
-        _audio?.setShadowing(false);
-        _audio?.stop();
-      } else {
-        _readAloud?.cancel();
-      }
-    });
-  }
-
   void _toggleBlur() {
-    setState(() {
-      _blurred = !_blurred;
-      if (_blurred) {
-        _readAloudMode = false;
-        _readAloud?.cancel();
-      }
-    });
+    setState(() => _blurred = !_blurred);
   }
 
+  // Turning shadowing off drops the hold row that "Check me" lives on —
+  // cancel any recording/transcription in flight rather than leaving it
+  // orphaned.
   void _toggleShadowing() {
     final audio = _audio;
     if (audio == null) return;
     final turningOn = !audio.shadowing;
+    if (!turningOn) _readAloud?.cancel();
     audio.setShadowing(turningOn);
-    if (turningOn && _readAloudMode) {
-      setState(() {
-        _readAloudMode = false;
-        _readAloud?.cancel();
-      });
-    }
+  }
+
+  /// Stops playback and cancels any in-flight "Check me" recording — the
+  /// hold row (and the mic button on it) disappears the moment audio stops,
+  /// so a recording left running would be orphaned.
+  void _stopAudio() {
+    _readAloud?.cancel();
+    _audio?.stop();
   }
 
   @override
@@ -491,18 +475,18 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   Widget _buildBody(BuildContext context, ListeningController? audio,
       ReadAloudController? readAloud) {
     final theme = Theme.of(context);
-    _maybeScrollToActiveLine(_activeLine(audio, readAloud));
+    _maybeScrollToActiveLine(_activeLine(audio));
 
     return Column(
       children: [
         if (audio != null)
           _AudioBar(
             controller: audio,
+            readAloud: readAloud,
             blurred: _blurred,
             onToggleBlur: _toggleBlur,
             onToggleShadowing: _toggleShadowing,
-            readAloudMode: _readAloudMode,
-            onToggleReadAloud: readAloud == null ? null : _toggleReadAloud,
+            onStop: _stopAudio,
           ),
         Expanded(child: _buildLines(audio, readAloud)),
         SafeArea(
@@ -513,13 +497,11 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  _readAloudMode
-                      ? 'Read-aloud — tap a line’s mic, read it, tap again'
-                      : _blurred
-                          ? 'Listening mode — tap the text to reveal it'
-                          : widget.showFurigana
-                              ? 'Tap any word to look it up'
-                              : "Furigana hidden — tap a word if it hasn't stuck",
+                  _blurred
+                      ? 'Listening mode — tap the text to reveal it'
+                      : widget.showFurigana
+                          ? 'Tap any word to look it up'
+                          : "Furigana hidden — tap a word if it hasn't stuck",
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
@@ -563,7 +545,6 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
   }
 
   Widget _buildLines(ListeningController? audio, ReadAloudController? readAloud) {
-    final readAloudMode = _readAloudMode && readAloud != null;
     final listView = ListView(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -576,32 +557,34 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
             taughtForms: widget.taughtForms,
             showFurigana: widget.showFurigana,
             // Highlighted while sounding and through the shadowing hold —
-            // the learner repeats the line they can see marked. In read-aloud
-            // mode the active line is highlighted instead.
-            isCurrent: readAloudMode
-                ? readAloud.activeLine == index
-                : audio?.currentLine == index &&
-                    (audio?.status == AudioStatus.playing ||
-                        audio?.status == AudioStatus.awaitingRepeat),
-            onReplay: audio == null ? null : () => audio.playLine(index),
-            readAloud: readAloudMode
-                ? _LineReadAloudState(
+            // the learner repeats the line they can see marked.
+            isCurrent: audio?.currentLine == index &&
+                (audio?.status == AudioStatus.playing ||
+                    audio?.status == AudioStatus.awaitingRepeat),
+            // A margin replay re-entering the chain mid-check would orphan
+            // the recording — cancel it first (mirrors `_stopAudio`).
+            onReplay: audio == null
+                ? null
+                : () {
+                    readAloud?.cancel();
+                    audio.playLine(index);
+                  },
+            // "Check me" (D73) only ever targets the currently held line, so
+            // this is non-null exactly when that line has something to show:
+            // an in-flight recording/transcription or a past verdict.
+            readAloud: readAloud == null
+                ? null
+                : _LineReadAloudState(
                     recording: readAloud.activeLine == index &&
                         readAloud.status == ReadAloudStatus.recording,
                     transcribing: readAloud.activeLine == index &&
                         readAloud.status == ReadAloudStatus.transcribing,
-                    // Other lines' mics are inert while one is active.
-                    enabled: readAloud.status == ReadAloudStatus.idle ||
-                        readAloud.status == ReadAloudStatus.error ||
-                        readAloud.activeLine == index,
                     result: readAloud.resultFor(index),
                     error: readAloud.activeLine == index &&
                             readAloud.status == ReadAloudStatus.error
                         ? readAloud.errorMessage
                         : null,
-                    onTap: () => readAloud.toggleLine(index),
-                  )
-                : null,
+                  ),
           ),
       ],
     );
@@ -622,29 +605,33 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
 }
 
 /// The player row: play/stop, speed (client-side rate, D50), shadowing
-/// toggle (D63) with its "Your turn" hold row, read-aloud toggle (D67), and
-/// listening-mode toggle. Inline error text on synthesis failure — reading is
-/// unaffected. The three practice modes are mutually exclusive; the parent
-/// coordinates that, so the toggles here just report taps.
+/// toggle (D63) with its "Your turn" hold row, and listening-mode toggle.
+/// The hold row carries an optional "Check me" grading step (D73, folded in
+/// from the read-aloud mode D67 shipped): record the held line, get a
+/// verdict. Inline error text on synthesis failure — reading is unaffected.
 class _AudioBar extends StatelessWidget {
   const _AudioBar({
     required this.controller,
+    required this.readAloud,
     required this.blurred,
     required this.onToggleBlur,
     required this.onToggleShadowing,
-    required this.readAloudMode,
-    required this.onToggleReadAloud,
+    required this.onStop,
   });
 
   final ListeningController controller;
+
+  /// Null when grading is unavailable (no conversationId) — "Check me" is
+  /// simply omitted from the hold row.
+  final ReadAloudController? readAloud;
+
   final bool blurred;
   final VoidCallback onToggleBlur;
   final VoidCallback onToggleShadowing;
-  final bool readAloudMode;
 
-  /// Null when read-aloud is unavailable (no conversationId), which greys the
-  /// toggle out.
-  final VoidCallback? onToggleReadAloud;
+  /// Stops playback — routed through the parent so an in-flight "Check me"
+  /// recording is cancelled first, not orphaned (see `_stopAudio`).
+  final VoidCallback onStop;
 
   @override
   Widget build(BuildContext context) {
@@ -670,7 +657,7 @@ class _AudioBar extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.stop_circle_outlined, size: 30),
                   tooltip: 'Stop',
-                  onPressed: controller.stop,
+                  onPressed: onStop,
                 )
               else
                 IconButton(
@@ -698,8 +685,10 @@ class _AudioBar extends StatelessWidget {
               // The mode toggles sit in an Expanded Wrap so they stay right-
               // aligned and on one line on real phones, but reflow to a
               // second run instead of overflowing on a narrow width or large
-              // text scale (a fourth toggle, D67, overran a fixed Row). Compact
-              // density keeps them on one line in the common case.
+              // text scale (a third toggle, D67, once overran a fixed Row —
+              // dropped back to two at D73, but the Wrap stays: it's the
+              // robust-by-construction fix, not a fit for a fixed count).
+              // Compact density keeps them on one line in the common case.
               Expanded(
                 child: Wrap(
                   alignment: WrapAlignment.end,
@@ -713,16 +702,6 @@ class _AudioBar extends StatelessWidget {
                       isSelected: controller.shadowing,
                       visualDensity: VisualDensity.compact,
                       onPressed: onToggleShadowing,
-                    ),
-                    IconButton(
-                      icon: Icon(
-                          readAloudMode ? Icons.mic : Icons.mic_none_outlined),
-                      tooltip: readAloudMode
-                          ? 'Turn off read-aloud'
-                          : 'Read aloud (check your pronunciation)',
-                      isSelected: readAloudMode,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onToggleReadAloud,
                     ),
                     IconButton(
                       icon: Icon(blurred
@@ -744,31 +723,59 @@ class _AudioBar extends StatelessWidget {
           // for the whole pass — the same-height row shows through both the
           // sounding line and the hold, just with different text and the
           // buttons disabled while a line plays — so the conversation beneath
-          // it doesn't jump up and down as each line is read.
+          // it doesn't jump up and down as each line is read. "Check me"
+          // (D73) is optional and never gates advancing — only its own
+          // recording/transcribing disables Hear-it-again/Next, so grading
+          // is opt-in every line, not a requirement to move on.
           if (controller.shadowing &&
               (controller.status == AudioStatus.playing ||
                   controller.status == AudioStatus.awaitingRepeat))
             Builder(builder: (context) {
               final awaiting =
                   controller.status == AudioStatus.awaitingRepeat;
+              final checkingThisLine = readAloud != null &&
+                  readAloud!.activeLine == controller.currentLine;
+              final checkStatus =
+                  checkingThisLine ? readAloud!.status : ReadAloudStatus.idle;
+              final checking = checkStatus == ReadAloudStatus.recording ||
+                  checkStatus == ReadAloudStatus.transcribing;
               return Padding(
                 padding: const EdgeInsets.only(left: 12, bottom: 4),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: Text(
-                        awaiting ? 'Your turn — say it aloud' : 'Listen…',
-                        style: theme.textTheme.bodyMedium,
-                      ),
+                    Text(
+                      awaiting ? 'Your turn — say it aloud' : 'Listen…',
+                      style: theme.textTheme.bodyMedium,
                     ),
-                    TextButton(
-                      onPressed: awaiting ? controller.repeatShadowLine : null,
-                      child: const Text('Hear it again'),
-                    ),
-                    const SizedBox(width: 4),
-                    FilledButton(
-                      onPressed: awaiting ? controller.advanceShadow : null,
-                      child: Text(controller.onLastLine ? 'Done' : 'Next line'),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        if (readAloud != null)
+                          _CheckMeButton(
+                            status: checkStatus,
+                            enabled: awaiting,
+                            onTap: () =>
+                                readAloud!.toggleLine(controller.currentLine!),
+                          ),
+                        TextButton(
+                          onPressed: awaiting && !checking
+                              ? controller.repeatShadowLine
+                              : null,
+                          child: const Text('Hear it again'),
+                        ),
+                        FilledButton(
+                          onPressed: awaiting && !checking
+                              ? controller.advanceShadow
+                              : null,
+                          child:
+                              Text(controller.onLastLine ? 'Done' : 'Next line'),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -790,32 +797,64 @@ class _AudioBar extends StatelessWidget {
   }
 }
 
-/// Per-line read-aloud state handed to a [_LineRow] when read-aloud mode is
-/// on; null otherwise.
+/// The mic control on the shadowing hold row (D73): idle → "Check me", tap
+/// records; recording → "Stop & check", tap stops and grades; transcribing →
+/// a spinner, no tap target. [enabled] gates the idle/recording states —
+/// checking only ever runs during the hold ("Your turn"), never while a line
+/// is sounding.
+class _CheckMeButton extends StatelessWidget {
+  const _CheckMeButton({
+    required this.status,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final ReadAloudStatus status;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (status == ReadAloudStatus.transcribing) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12),
+        child: SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    final recording = status == ReadAloudStatus.recording;
+    return OutlinedButton.icon(
+      onPressed: enabled ? onTap : null,
+      icon: Icon(recording ? Icons.stop_circle_outlined : Icons.mic_outlined,
+          size: 18),
+      label: Text(recording ? 'Stop & check' : 'Check me'),
+      style: const ButtonStyle(visualDensity: VisualDensity.compact),
+    );
+  }
+}
+
+/// Per-line "Check me" state handed to a [_LineRow]: an in-flight
+/// recording/transcription or a past verdict for that specific line. Null
+/// when the conversation has no audio layer (mirrors [_LineRow.onReplay]).
 @immutable
 class _LineReadAloudState {
   const _LineReadAloudState({
     required this.recording,
     required this.transcribing,
-    required this.enabled,
     required this.result,
     required this.error,
-    required this.onTap,
   });
 
   final bool recording;
   final bool transcribing;
 
-  /// Whether this line's mic responds — false while another line is busy.
-  final bool enabled;
-
   final ReadAloudResult? result;
 
   /// Error text for this line, or null.
   final String? error;
-
-  /// Start/stop recording this line.
-  final VoidCallback onTap;
 }
 
 class _LineRow extends StatelessWidget {
@@ -842,7 +881,8 @@ class _LineRow extends StatelessWidget {
   /// conversation has no audio layer.
   final VoidCallback? onReplay;
 
-  /// Read-aloud state for this line, or null when the mode is off (D67).
+  /// "Check me" state for this line, or null when the conversation has no
+  /// audio layer (D73).
   final _LineReadAloudState? readAloud;
 
   @override
@@ -863,8 +903,8 @@ class _LineRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Speaker margin column (D43: book-marginalia, not "Name: line"),
-          // with the per-line affordance beneath the name — a replay control
-          // normally, the read-aloud mic when that mode is on.
+          // with the replay control beneath the name — the "Check me" mic
+          // lives on the shadowing hold row instead (D73).
           SizedBox(
             width: 44,
             child: Column(
@@ -879,9 +919,7 @@ class _LineRow extends StatelessWidget {
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ),
-                if (ra != null)
-                  _MicButton(state: ra, theme: theme)
-                else if (onReplay != null)
+                if (onReplay != null)
                   IconButton(
                     icon: const Icon(Icons.replay, size: 16),
                     tooltip: 'Play this line',
@@ -919,43 +957,9 @@ class _LineRow extends StatelessWidget {
   }
 }
 
-/// The margin mic control for one line: mic when idle, stop while recording,
-/// a spinner while transcribing.
-class _MicButton extends StatelessWidget {
-  const _MicButton({required this.state, required this.theme});
-
-  final _LineReadAloudState state;
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    if (state.transcribing) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 8, right: 8),
-        child: SizedBox(
-          width: 16,
-          height: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
-    final recording = state.recording;
-    return IconButton(
-      icon: Icon(recording ? Icons.stop_circle : Icons.mic, size: 18),
-      tooltip: recording ? 'Stop and check' : 'Record this line',
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      color: recording
-          ? theme.colorScheme.error
-          : theme.colorScheme.primary,
-      onPressed: state.enabled ? state.onTap : null,
-    );
-  }
-}
-
-/// The verdict-and-transcript block under a line in read-aloud mode. The raw
-/// transcript is always shown (spec §5): it's the truth the verdict only
-/// hints at.
+/// The verdict-and-transcript block under a line after a "Check me" grade.
+/// The raw transcript is always shown (spec §5): it's the truth the verdict
+/// only hints at.
 class _ReadAloudFeedback extends StatelessWidget {
   const _ReadAloudFeedback({required this.state});
 
@@ -978,7 +982,7 @@ class _ReadAloudFeedback extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Text(
-          'Recording… tap the mic when you’re done',
+          'Recording… tap "Stop & check" when you’re done',
           style: theme.textTheme.bodySmall
               ?.copyWith(color: theme.colorScheme.primary),
         ),
