@@ -52,15 +52,22 @@ List<DisplayToken> displayTokens(GenLine line, GenerationSeed seed) {
       plain(token.surface);
       continue;
     }
-    final segments = furiganaSegments(
+    final match = matchSurface(
       surface: token.surface,
       kana: entry.kana,
       kanji: entry.kanji,
       conjugates: conjugatingRoles.contains(entry.role),
+      trailingGlue: seed.glue,
     );
-    result.add(segments == null
-        ? DisplayToken(token.surface, [FuriganaSegment(token.surface)])
-        : DisplayToken(token.surface, segments, entry));
+    if (match == null) {
+      result.add(DisplayToken(token.surface, [FuriganaSegment(token.surface)]));
+      continue;
+    }
+    // A token the model fused a particle into (先生は) splits back into the
+    // word plus plain glue (D74), so furigana, the underline, and the tap
+    // target all cover 先生 alone — as if it had been tokenized properly.
+    result.add(DisplayToken(match.base, match.segments, entry));
+    plain(match.trailing);
   }
   plain(text.substring(pos));
   return result;

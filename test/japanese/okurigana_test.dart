@@ -136,5 +136,131 @@ void main() {
         [const FuriganaSegment('スミス')],
       );
     });
+
+    test('no glue set supplied: a fused particle is still rejected', () {
+      // furiganaSegments keeps its pre-D74 contract — the peel is opt-in via
+      // matchSurface's trailingGlue.
+      expect(
+        furiganaSegments(
+            surface: 'あなたは', kana: 'あなた', kanji: '', conjugates: false),
+        isNull,
+      );
+    });
+  });
+
+  group('matchSurface trailing-glue peel (D74)', () {
+    const glue = {'は', 'を', 'に', 'か', 'の', 'です'};
+
+    SurfaceMatch? match(String surface,
+            {String kana = 'あなた',
+            String kanji = '',
+            bool conjugates = false}) =>
+        matchSurface(
+          surface: surface,
+          kana: kana,
+          kanji: kanji,
+          conjugates: conjugates,
+          trailingGlue: glue,
+        );
+
+    test('the live failure: あなたは tagged as あなた is accepted and split', () {
+      // Observed live — the model fused the topic particle into the content
+      // token instead of emitting it as separate glue.
+      final m = match('あなたは')!;
+      expect(m.base, 'あなた');
+      expect(m.trailing, 'は');
+      expect(m.hadFusedGlue, isTrue);
+      expect(m.segments, [const FuriganaSegment('あなた')]);
+    });
+
+    test('a clean surface reports no fused glue and keeps the whole surface',
+        () {
+      final m = match('あなた')!;
+      expect(m.base, 'あなた');
+      expect(m.trailing, '');
+      expect(m.hadFusedGlue, isFalse);
+    });
+
+    test('furigana still covers the word alone when kanji is fused with glue',
+        () {
+      // The real payoff: 先生は would otherwise render plain, losing furigana.
+      final m = match('先生は', kana: 'せんせい', kanji: '先生')!;
+      expect(m.base, '先生');
+      expect(m.trailing, 'は');
+      expect(m.segments, [const FuriganaSegment('先生', 'せんせい')]);
+    });
+
+    test('multiple fused particles peel together', () {
+      final m = match('あなたには')!;
+      expect(m.base, 'あなた');
+      expect(m.trailing, 'には');
+    });
+
+    test('a direct match wins over any peel — a real conjugation is not split',
+        () {
+      // ます-style endings can appear in a table-backed glue set; a legitimately
+      // tokenized 飲みます must stay whole so the lookup sheet can still
+      // recognize its polite form.
+      final m = matchSurface(
+        surface: '飲みます',
+        kana: 'のむ',
+        kanji: '飲む',
+        conjugates: true,
+        trailingGlue: {...glue, 'ます'},
+      );
+      expect(m!.base, '飲みます');
+      expect(m.trailing, '');
+      expect(m.segments,
+          [const FuriganaSegment('飲', 'の'), const FuriganaSegment('みます')]);
+    });
+
+    test('a multi-piece tail peels as a unit (先生ですか → 先生 + ですか)', () {
+      // Walks split points down from the longest head: 先生です is not a form
+      // of the entry, so it keeps going until the whole ですか factors off.
+      final m = match('先生ですか', kana: 'せんせい', kanji: '先生')!;
+      expect(m.base, '先生');
+      expect(m.trailing, 'ですか');
+      expect(m.segments, [const FuriganaSegment('先生', 'せんせい')]);
+    });
+
+    test('a conjugating entry keeps its whole tail rather than peeling it', () {
+      // The kana-conjugation rule already accepts any pure-kana tail sharing
+      // the stem, so のみますか matches directly and never reaches the peel —
+      // which is what preserves the polite-form annotation in the lookup sheet.
+      final m = matchSurface(
+        surface: 'のみますか',
+        kana: 'のむ',
+        kanji: '飲む',
+        conjugates: true,
+        trailingGlue: {...glue, 'ます'},
+      );
+      expect(m!.base, 'のみますか');
+      expect(m.hadFusedGlue, isFalse);
+    });
+
+    test('the peel does not launder a hallucinated surface', () {
+      // ねこ tagged with the entry for あなた: no split leaves a head that
+      // reconciles, so this stays a violation (the D24/laundering guarantee).
+      expect(match('ねこは'), isNull);
+      expect(match('ねこ'), isNull);
+    });
+
+    test('the peel cannot consume the entire surface', () {
+      // は alone tagged as a content word must not "match" by peeling itself.
+      expect(match('は'), isNull);
+      expect(match('はは', kana: 'はは'), isNotNull); // real word, direct match
+    });
+
+    test('trailing punctuation rides along behind the peeled glue', () {
+      final m = match('あなたは、')!;
+      expect(m.base, 'あなた');
+      expect(m.trailing, 'は、');
+    });
+
+    test('an untaught tail is not peelable', () {
+      // さん is not in the glue set — fusing it must still fail (the D20 bug
+      // must not come back through this door).
+      expect(match('あなたさん'), isNull);
+    });
   });
 }

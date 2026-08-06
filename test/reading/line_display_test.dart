@@ -70,6 +70,30 @@ void main() {
     expect(tokens.single.segments.single.ruby, isNull);
   });
 
+  test('a fused particle splits back off the content word (D74)', () {
+    // The model tokenized 鈴木は as one content token. It must render as if it
+    // had been split: furigana and the tap target on 鈴木 alone, は plain.
+    final tokens = displayTokens(
+      _line('鈴木は すしを 食べません。', const [
+        GenToken(surface: '鈴木は', vocabId: 20),
+        GenToken(surface: 'すし', vocabId: 5),
+        GenToken(surface: 'を', vocabId: 0),
+        GenToken(surface: '食べません', vocabId: 31),
+      ]),
+      _seed,
+    );
+
+    final suzuki = tokens.firstWhere((t) => t.surface == '鈴木');
+    expect(suzuki.isTappable, isTrue);
+    expect(suzuki.segments.single.ruby, 'すずき');
+
+    final wa = tokens.firstWhere((t) => t.surface == 'は');
+    expect(wa.isTappable, isFalse);
+
+    // Nothing lost or duplicated in the round trip.
+    expect(tokens.map((t) => t.surface).join(), '鈴木は すしを 食べません。');
+  });
+
   test('a token missing from text still renders rather than disappearing', () {
     final tokens = displayTokens(
       _line('すしです。', const [
