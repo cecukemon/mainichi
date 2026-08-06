@@ -147,6 +147,22 @@ void main() {
     expect(audio.deletedAudio, isEmpty);
   });
 
+  testWidgets('undo snackbar auto-dismisses instead of persisting',
+      (tester) async {
+    // SnackBar defaults `persist` to true whenever it has an action, which
+    // would otherwise leave this "Deleted ..." toast on screen forever.
+    await _pump(tester, rows: [_row(1, 'Ordering at a restaurant')]);
+
+    await tester.drag(find.text('Ordering at a restaurant'),
+        const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Deleted "Ordering at a restaurant"'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Deleted "Ordering at a restaurant"'), findsNothing);
+  });
+
   // The commit-on-lapse path (DB + audio) is exercised directly on the
   // notifier — driving a SnackBar's auto-dismiss timer through the widget
   // tester is timing-fragile, and the optimistic-delete logic lives here.
