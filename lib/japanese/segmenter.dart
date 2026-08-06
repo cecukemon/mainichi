@@ -88,6 +88,22 @@ const Map<String, List<String>> _verbSuffixes = {
   'polite': ['ます'],
   'polite_negative': ['ません'],
   'past': ['ました'],
+  'past_negative': ['ませんでした'],
+};
+
+/// The polite paradigm (dictionary, ます, ません, ました, ませんでした) is
+/// taught for every verb in the course, independent of whether any
+/// structure's slots demand it — unlike the forms in [_verbSuffixes] above,
+/// which only enter scope once a taught pattern uses them. Callers that
+/// build a `taughtForms` set for factoring/validation should start from this
+/// baseline (see `GenerationSeed.taughtForms`) rather than deriving forms
+/// from structure slots alone.
+const Set<String> alwaysTaughtVerbForms = {
+  'dictionary',
+  'polite',
+  'polite_negative',
+  'past',
+  'past_negative',
 };
 
 Iterable<({String form, String surface})> _conjugatedForms(

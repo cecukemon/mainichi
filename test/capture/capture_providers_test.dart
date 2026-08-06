@@ -49,4 +49,38 @@ void main() {
     expect(notifier.state.draft, isNotNull);
     expect(await db.select(db.words).get(), hasLength(1));
   });
+
+  test(
+      'a forced-review verb (polite-form kana) is queued despite high '
+      'confidence, and survives approveAllHighConfidence unapproved',
+      () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final notifier = CaptureQueueNotifier(db);
+
+    const draft = CaptureDraft(
+      worksheetTitle: 'live worksheet',
+      worksheetTopic: 'topic',
+      vocabulary: [
+        VocabDraftItem(
+          kana: 'もらいます',
+          kanji: '',
+          romaji: '',
+          meaning: 'to receive',
+          role: WordRole.verb,
+          kanaOnly: true,
+          meaningSource: MeaningSource.inferred,
+          confidence: ConfidenceTier.high,
+          forcedReview: true,
+        ),
+      ],
+      templates: [],
+    );
+
+    await notifier.loadFromExtraction(draft);
+    expect(notifier.state.order, contains(const QueueRef(QueueItemType.vocab, 0)));
+
+    notifier.approveAllHighConfidence();
+    expect(notifier.state.draft!.vocabulary.single.reviewStatus, ReviewStatus.pending);
+  });
 }

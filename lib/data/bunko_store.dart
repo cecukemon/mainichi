@@ -94,6 +94,30 @@ class BunkoWordDetail {
   final List<String> examples;
 }
 
+/// Appended to [Words.notes] when a suspected polite-form verb (see
+/// `politeFormSuspicion`) is confirmed as a legitimate dictionary form (e.g.
+/// 励ます, 済ます) so the fix-up sheet stops flagging it.
+const String baseFormCheckedMarker = '[base-form-checked]';
+
+enum FixWordOutcome { updated, merged, notFound }
+
+/// Result of [BunkoStore.fixWordBaseForm].
+@immutable
+class FixWordResult {
+  const FixWordResult._(this.outcome, this.mergedIntoId);
+  const FixWordResult.updated() : this._(FixWordOutcome.updated, null);
+
+  /// The rewrite collided with the `(kana, kanji, role)` unique key of an
+  /// existing entry ([mergedIntoId]) — the source word's meaning/notes/kanji
+  /// gaps, example sentences, and conversation/SRS references were carried
+  /// over onto it, and the source row was deleted.
+  const FixWordResult.merged(int intoId) : this._(FixWordOutcome.merged, intoId);
+  const FixWordResult.notFound() : this._(FixWordOutcome.notFound, null);
+
+  final FixWordOutcome outcome;
+  final int? mergedIntoId;
+}
+
 @immutable
 class BunkoStructureDetail {
   const BunkoStructureDetail({required this.structure, required this.examples});
@@ -119,6 +143,18 @@ abstract class BunkoStore {
   /// A structure plus its example sentences, or null if it's been deleted
   /// since the list was loaded.
   Future<BunkoStructureDetail?> structureById(int id);
+
+  /// Rewrites word [id]'s kana/kanji to the dictionary-form base the caller
+  /// picked (verb base-form fix-up, features/bunko-browser.md). See
+  /// [FixWordResult] for the merge behavior when the rewrite collides with
+  /// an existing entry.
+  Future<FixWordResult> fixWordBaseForm(int id,
+      {required String kana, required String kanji});
+
+  /// Marks word [id] as a manually-confirmed dictionary form despite ending
+  /// in ます (e.g. 励ます) — appends [baseFormCheckedMarker] to its notes so
+  /// the fix-up sheet stops flagging it. No-op if already marked.
+  Future<void> dismissBaseFormSuspicion(int id);
 }
 
 class DriftBunkoStore implements BunkoStore {
@@ -240,5 +276,141 @@ class DriftBunkoStore implements BunkoStore {
       ),
       examples: [for (final e in examples) e.sentence],
     );
+  }
+
+  @override
+  Future<FixWordResult> fixWordBaseForm(int id,
+      {required String kana, required String kanji}) {
+    return _db.transaction(() async {
+      final source =
+          await (_db.select(_db.words)..where((w) => w.id.equals(id)))
+              .getSingleOrNull();
+      if (source == null) return const FixWordResult.notFound();
+
+      final collision = await (_db.select(_db.words)
+            ..where((w) =>
+                w.kana.equals(kana) &
+                w.kanji.equals(kanji) &
+                w.role.equalsValue(source.role) &
+                w.id.equals(id).not()))
+          .getSingleOrNull();
+
+      if (collision == null) {
+        await (_db.update(_db.words)..where((w) => w.id.equals(id))).write(
+              WordsCompanion(
+                kana: Value(kana),
+                kanji: Value(kanji),
+                updatedAt: Value(DateTime.now()),
+              ),
+            );
+        return const FixWordResult.updated();
+      }
+
+      final targetId = collision.id;
+      // Fill-the-gap merge, mirroring commit_service.dart's dedup merge: an
+      // existing meaning/notes/kanji is never second-guessed, only filled
+      // when genuinely empty.
+      if (source.meaning?.isNotEmpty == true) {
+        await (_db.update(_db.words)
+              ..where((w) => w.id.equals(targetId) & w.meaning.isNull()))
+            .write(WordsCompanion(
+          meaning: Value(source.meaning),
+          meaningSource: Value(source.meaningSource),
+          updatedAt: Value(DateTime.now()),
+        ));
+      }
+      if (source.notes?.isNotEmpty == true) {
+        await (_db.update(_db.words)
+              ..where((w) => w.id.equals(targetId) & w.notes.isNull()))
+            .write(WordsCompanion(
+          notes: Value(source.notes),
+          updatedAt: Value(DateTime.now()),
+        ));
+      }
+      if (kanji.isNotEmpty && collision.kanji.isEmpty) {
+        await (_db.update(_db.words)
+              ..where((w) => w.id.equals(targetId) & w.kanji.equals('')))
+            .write(WordsCompanion(
+          kanji: Value(kanji),
+          kanaOnly: const Value(false),
+          updatedAt: Value(DateTime.now()),
+        ));
+      }
+
+      // Repoint dependents onto the target before deleting the source row —
+      // ExampleSentences/ConversationWords/SrsCards all cascade-delete on
+      // wordId, which would silently destroy this data if deleted first.
+      await (_db.update(_db.exampleSentences)
+            ..where((e) => e.wordId.equals(id)))
+          .write(ExampleSentencesCompanion(wordId: Value(targetId)));
+      await _repointConversationWords(fromWordId: id, toWordId: targetId);
+      await _repointSrsCard(fromWordId: id, toWordId: targetId);
+
+      await (_db.delete(_db.words)..where((w) => w.id.equals(id))).go();
+      return FixWordResult.merged(targetId);
+    });
+  }
+
+  /// A conversation may already reference both the source and target word
+  /// (the composite primary key would collide on a plain rewrite), so this
+  /// inserts the target reference first (ignoring an existing one) and only
+  /// then deletes the source's rows.
+  Future<void> _repointConversationWords(
+      {required int fromWordId, required int toWordId}) async {
+    final rows = await (_db.select(_db.conversationWords)
+          ..where((r) => r.wordId.equals(fromWordId)))
+        .get();
+    for (final row in rows) {
+      await _db.into(_db.conversationWords).insert(
+            ConversationWordsCompanion.insert(
+              conversationId: row.conversationId,
+              wordId: toWordId,
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
+    }
+    await (_db.delete(_db.conversationWords)
+          ..where((r) => r.wordId.equals(fromWordId)))
+        .go();
+  }
+
+  /// itemType/itemId is a polymorphic reference (not a DB foreign key,
+  /// tables.dart), unique per (itemType, itemId) — if the target already has
+  /// a card, the source's card is simply dropped rather than merging SRS
+  /// stats (out of scope for a base-form typo fix).
+  Future<void> _repointSrsCard(
+      {required int fromWordId, required int toWordId}) async {
+    final targetHasCard = await (_db.select(_db.srsCards)
+          ..where((c) =>
+              c.itemType.equalsValue(SrsItemType.word) &
+              c.itemId.equals(toWordId)))
+        .getSingleOrNull();
+    if (targetHasCard != null) {
+      await (_db.delete(_db.srsCards)
+            ..where((c) =>
+                c.itemType.equalsValue(SrsItemType.word) &
+                c.itemId.equals(fromWordId)))
+          .go();
+    } else {
+      await (_db.update(_db.srsCards)
+            ..where((c) =>
+                c.itemType.equalsValue(SrsItemType.word) &
+                c.itemId.equals(fromWordId)))
+          .write(SrsCardsCompanion(itemId: Value(toWordId)));
+    }
+  }
+
+  @override
+  Future<void> dismissBaseFormSuspicion(int id) async {
+    final word = await (_db.select(_db.words)..where((w) => w.id.equals(id)))
+        .getSingleOrNull();
+    if (word == null) return;
+    if (word.notes?.contains(baseFormCheckedMarker) == true) return;
+    final notes = word.notes?.isNotEmpty == true
+        ? '${word.notes} $baseFormCheckedMarker'
+        : baseFormCheckedMarker;
+    await (_db.update(_db.words)..where((w) => w.id.equals(id))).write(
+          WordsCompanion(notes: Value(notes), updatedAt: Value(DateTime.now())),
+        );
   }
 }

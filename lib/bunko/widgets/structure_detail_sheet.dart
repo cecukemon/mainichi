@@ -145,5 +145,6 @@ String _slotFormLabel(SlotForm form) => switch (form) {
       SlotForm.polite => 'polite',
       SlotForm.politeNegative => 'polite negative',
       SlotForm.past => 'past',
+      SlotForm.pastNegative => 'past negative',
       SlotForm.te => 'te-form',
     };

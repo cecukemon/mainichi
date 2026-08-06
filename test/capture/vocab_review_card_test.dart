@@ -91,6 +91,80 @@ void main() {
     expect(tester.widget<FilledButton>(approveFinder).onPressed, isNotNull);
   });
 
+  group('polite-form verb base-form validation', () {
+    const unambiguousItem = VocabDraftItem(
+      kana: 'もらいました',
+      kanji: '',
+      romaji: '',
+      meaning: 'to receive',
+      role: WordRole.verb,
+      kanaOnly: false,
+      meaningSource: MeaningSource.inferred,
+      confidence: ConfidenceTier.high,
+    );
+    const ambiguousItem = VocabDraftItem(
+      kana: 'もらいます',
+      kanji: '',
+      romaji: '',
+      meaning: 'to receive',
+      role: WordRole.verb,
+      kanaOnly: false,
+      meaningSource: MeaningSource.inferred,
+      confidence: ConfidenceTier.high,
+    );
+
+    testWidgets(
+        'an unambiguous polite ending (ました) disables Approve until fixed',
+        (tester) async {
+      VocabDraftItem? approved;
+      await _pumpCard(tester,
+          item: unambiguousItem, onApprove: (edited) => approved = edited);
+
+      expect(find.textContaining('dictionary (base) form'), findsOneWidget);
+      final approveFinder = find.widgetWithText(FilledButton, 'Approve');
+      expect(tester.widget<FilledButton>(approveFinder).onPressed, isNull);
+
+      await tester.tap(find.widgetWithText(ActionChip, 'もらう'));
+      await tester.pump();
+      expect(tester.widget<FilledButton>(approveFinder).onPressed, isNotNull);
+
+      await tester.ensureVisible(approveFinder);
+      await tester.tap(approveFinder);
+      expect(approved?.kana, 'もらう');
+    });
+
+    testWidgets('an ambiguous ます ending warns but leaves Approve enabled',
+        (tester) async {
+      await _pumpCard(tester, item: ambiguousItem);
+
+      expect(find.textContaining('if this is the polite form'), findsOneWidget);
+      final approveFinder = find.widgetWithText(FilledButton, 'Approve');
+      expect(tester.widget<FilledButton>(approveFinder).onPressed, isNotNull);
+
+      await tester.tap(find.widgetWithText(ActionChip, 'もらう'));
+      await tester.pump();
+      // Still enabled after picking a candidate; the field just updates.
+      expect(tester.widget<FilledButton>(approveFinder).onPressed, isNotNull);
+    });
+
+    testWidgets('changing role away from verb clears the warning and gate',
+        (tester) async {
+      await _pumpCard(tester, item: unambiguousItem);
+      expect(find.textContaining('dictionary (base) form'), findsOneWidget);
+
+      final dropdownFinder = find.byType(DropdownButtonFormField<WordRole>);
+      await tester.ensureVisible(dropdownFinder);
+      await tester.tap(dropdownFinder);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(WordRole.noun.name).last);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('dictionary (base) form'), findsNothing);
+      final approveFinder = find.widgetWithText(FilledButton, 'Approve');
+      expect(tester.widget<FilledButton>(approveFinder).onPressed, isNotNull);
+    });
+  });
+
   testWidgets('ranked kanji candidates each render as a chip, plus "No kanji" '
       '(D58)', (tester) async {
     await _pumpCard(

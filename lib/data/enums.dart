@@ -60,6 +60,7 @@ enum SlotForm {
   polite,
   politeNegative,
   past,
+  pastNegative,
   te;
 
   static SlotForm fromExtraction(String? s) => switch (s) {
@@ -67,6 +68,7 @@ enum SlotForm {
         'polite' => SlotForm.polite,
         'polite_negative' => SlotForm.politeNegative,
         'past' => SlotForm.past,
+        'past_negative' => SlotForm.pastNegative,
         'te' => SlotForm.te,
         _ => SlotForm.dictionary,
       };
@@ -74,6 +76,7 @@ enum SlotForm {
   /// The snake_case wire string, inverse of [fromExtraction].
   String get wire => switch (this) {
         SlotForm.politeNegative => 'polite_negative',
+        SlotForm.pastNegative => 'past_negative',
         _ => name,
       };
 }

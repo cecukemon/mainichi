@@ -66,11 +66,7 @@ class _FreeConversationScreenState
   }
 
   /// The taught conjugation forms for the lookup sheet's form annotation.
-  Set<String> get _taughtForms => {
-        'dictionary',
-        for (final s in _seed!.structures)
-          for (final sl in s.slots) sl.form,
-      };
+  Set<String> get _taughtForms => _seed!.taughtForms;
 
   void _scrollToBottomSoon() {
     WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -14,6 +14,7 @@ const _lexicon = [
   LexiconEntry(id: 30, kana: 'いく', kanji: '行く', role: 'verb'),
   LexiconEntry(id: 31, kana: 'たべる', kanji: '食べる', role: 'verb'),
   LexiconEntry(id: 32, kana: 'のむ', role: 'verb'), // kana-only godan
+  LexiconEntry(id: 33, kana: 'もらう', role: 'verb'), // kana-only godan, う-row
   LexiconEntry(id: 40, kana: 'おもしろい', kanji: '面白い', role: 'i_adjective'),
 ];
 
@@ -76,6 +77,22 @@ void main() {
     expect(_factor('行く', forms: {'dictionary'}).ok, isTrue);
   });
 
+  test('past_negative (ませんでした) factors when taught', () {
+    expect(_factor('もらいました', forms: {..._forms, 'past'}).ok, isTrue);
+    expect(
+      _factor('もらいませんでした', forms: {..._forms, 'past_negative'}).ok,
+      isTrue,
+    );
+    // Same line fails without the form taught — gated, not assumed.
+    expect(_factor('もらいませんでした', forms: _forms).ok, isFalse);
+  });
+
+  test('alwaysTaughtVerbForms is the course-wide polite paradigm', () {
+    expect(alwaysTaughtVerbForms, {
+      'dictionary', 'polite', 'polite_negative', 'past', 'past_negative',
+    });
+  });
+
   test('unmapped taught forms (te) flag rather than pass silently', () {
     // If a worksheet someday teaches the te-form, its lines fail factoring
     // until _verbSuffixes learns the (irregular-prone) mapping — the same
@@ -123,6 +140,10 @@ void main() {
       expect(detect('たべます', taberu), 'polite'); // ichidan, kana surface
       expect(detect('行きます', iku), 'polite'); // godan, kanji stem
       expect(detect('のみました', nomu, forms: {..._forms, 'past'}), 'past');
+      expect(
+        detect('たべませんでした', taberu, forms: {..._forms, 'past_negative'}),
+        'past_negative',
+      );
     });
 
     test('identifies the i-adjective negative', () {

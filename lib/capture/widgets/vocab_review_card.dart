@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../data/enums.dart';
+import '../../japanese/polite_form.dart';
 import '../models.dart';
 import 'worksheet_photo_box.dart';
 
@@ -73,6 +74,26 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
     _kanaFreeText.dispose();
     _meaning.dispose();
     super.dispose();
+  }
+
+  /// Live, not the extraction-time `item.forcedReview` — recomputed from the
+  /// card's current edited kana/role so an edit clears (or introduces) the
+  /// warning immediately (capture-loop.md §3).
+  PoliteFormSuspicion get _baseFormSuspicion =>
+      _role == WordRole.verb ? politeFormSuspicion(_kana) : PoliteFormSuspicion.none;
+
+  void _applyBaseFormCandidate(String candidate) {
+    setState(() {
+      _kana = candidate;
+      _kanaFreeText.text = candidate;
+      if (_kanji.isNotEmpty) {
+        final transformed = transformKanjiBaseForm(_kanji, candidate);
+        if (transformed != null) {
+          _kanji = transformed;
+          _kanjiFreeText.text = transformed;
+        }
+      }
+    });
   }
 
   @override
@@ -175,7 +196,7 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
             TextField(
               controller: _kanaFreeText,
               decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
-              onChanged: (v) => _kana = v,
+              onChanged: (v) => setState(() => _kana = v),
             )
           else
             Wrap(
@@ -194,6 +215,14 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
                 ),
               ],
             ),
+          if (_baseFormSuspicion != PoliteFormSuspicion.none) ...[
+            const SizedBox(height: 10),
+            _PoliteFormWarning(
+              suspicion: _baseFormSuspicion,
+              candidates: baseFormCandidates(_kana),
+              onPickCandidate: _applyBaseFormCandidate,
+            ),
+          ],
           const SizedBox(height: 16),
           Text('Meaning', style: Theme.of(context).textTheme.labelMedium),
           const SizedBox(height: 6),
@@ -232,7 +261,8 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
-                  onPressed: widget.requireMeaning && _meaning.text.trim().isEmpty
+                  onPressed: (widget.requireMeaning && _meaning.text.trim().isEmpty) ||
+                          _baseFormSuspicion == PoliteFormSuspicion.unambiguous
                       ? null
                       : () => widget.onApprove(
                             item.copyWith(kanji: _kanji, kana: _kana, meaning: _meaning.text, role: _role),
@@ -250,6 +280,72 @@ class _VocabReviewCardState extends State<VocabReviewCard> {
             label: const Text('Discard extraction'),
             style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Banner + candidate chips for a verb whose kana looks like a polite-form
+/// conjugation (see `politeFormSuspicion`). Unambiguous endings (ました /
+/// ません / ませんでした) read as a hard stop — Approve is disabled by the
+/// caller until fixed. A bare ます ending is only a warning, since some
+/// dictionary-form verbs end in ます (励ます, 済ます).
+class _PoliteFormWarning extends StatelessWidget {
+  const _PoliteFormWarning({
+    required this.suspicion,
+    required this.candidates,
+    required this.onPickCandidate,
+  });
+
+  final PoliteFormSuspicion suspicion;
+  final List<String> candidates;
+  final void Function(String candidate) onPickCandidate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final unambiguous = suspicion == PoliteFormSuspicion.unambiguous;
+    final color =
+        unambiguous ? theme.colorScheme.errorContainer : theme.colorScheme.tertiaryContainer;
+    final onColor = unambiguous
+        ? theme.colorScheme.onErrorContainer
+        : theme.colorScheme.onTertiaryContainer;
+    final message = unambiguous
+        ? 'Words are stored in dictionary (base) form, not this conjugation. Pick the base form below.'
+        : 'Ends in ます — if this is the polite form, pick the dictionary form below. If this verb genuinely ends in ます (e.g. 励ます), you can leave it.';
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(unambiguous ? Icons.error_outline : Icons.warning_amber_outlined,
+                  size: 16, color: onColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(message,
+                    style: theme.textTheme.bodySmall?.copyWith(color: onColor)),
+              ),
+            ],
+          ),
+          if (candidates.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              children: [
+                for (final candidate in candidates)
+                  ActionChip(
+                    label: Text(candidate),
+                    onPressed: () => onPickCandidate(candidate),
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

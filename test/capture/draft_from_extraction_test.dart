@@ -178,6 +178,59 @@ void main() {
     });
   });
 
+  group('forcedReview (capture-time polite-form verb validation)', () {
+    Map<String, dynamic> verbExtraction({
+      required String kana,
+      required String role,
+      required String confidence,
+    }) {
+      return {
+        'worksheet': {'title': '', 'topic': '', 'orientation_note': 'upright'},
+        'vocabulary': [
+          {
+            'kana': kana,
+            'kanji': '',
+            'romaji': '',
+            'meaning': 'to receive',
+            'role': role,
+            'kana_only': true,
+            'meaning_source': 'inferred',
+            'confidence': confidence,
+            'notes': '',
+          },
+        ],
+        'structures': <Object>[],
+        'handwriting': {'detected': false, 'ignored_notes': <String>[]},
+      };
+    }
+
+    test('a high-confidence verb in polite form is forced into review anyway',
+        () {
+      final draft = draftFromExtraction(
+          verbExtraction(kana: 'もらいます', role: 'verb', confidence: 'high'));
+      final item = draft.vocabulary.single;
+      expect(item.confidence, ConfidenceTier.high);
+      expect(item.forcedReview, isTrue);
+      expect(item.needsReview, isTrue);
+    });
+
+    test('a high-confidence verb already in dictionary form is not forced',
+        () {
+      final draft = draftFromExtraction(
+          verbExtraction(kana: 'もらう', role: 'verb', confidence: 'high'));
+      final item = draft.vocabulary.single;
+      expect(item.forcedReview, isFalse);
+      expect(item.needsReview, isFalse);
+    });
+
+    test('a polite-looking kana on a non-verb role is not forced', () {
+      final draft = draftFromExtraction(
+          verbExtraction(kana: 'もらいます', role: 'noun', confidence: 'high'));
+      final item = draft.vocabulary.single;
+      expect(item.forcedReview, isFalse);
+    });
+  });
+
   test('maps a template with a slot form', () {
     final draft = draftFromExtraction(_sampleExtraction());
     final template = draft.templates.single;

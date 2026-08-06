@@ -100,6 +100,7 @@ class VocabDraftItem {
     this.reviewStatus = ReviewStatus.pending,
     this.mergeDecision = MergeDecision.undecided,
     this.newExampleSentence,
+    this.forcedReview = false,
   });
 
   final String kana;
@@ -148,8 +149,15 @@ class VocabDraftItem {
   /// show and write.
   final String? newExampleSentence;
 
+  /// True when capture-time validation (a verb kana that looks like a
+  /// polite-paradigm conjugation, e.g. もらいます stored instead of もらう —
+  /// see `politeFormSuspicion`) requires this item to be reviewed even if
+  /// the extractor was otherwise high-confidence about it, so a bulk-approve
+  /// can't let it slip in unseen.
+  final bool forcedReview;
+
   bool get isPictureDerived => meaningSource == MeaningSource.picture;
-  bool get needsReview => confidence == ConfidenceTier.low;
+  bool get needsReview => confidence == ConfidenceTier.low || forcedReview;
   bool get hasDedupCandidate =>
       existingMatch != null && mergeDecision == MergeDecision.undecided;
 
@@ -182,6 +190,7 @@ class VocabDraftItem {
       reviewStatus: reviewStatus ?? this.reviewStatus,
       mergeDecision: mergeDecision ?? this.mergeDecision,
       newExampleSentence: newExampleSentence,
+      forcedReview: forcedReview,
     );
   }
 }
