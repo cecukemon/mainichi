@@ -44,6 +44,34 @@ class FuriganaSegment {
   String toString() => ruby == null ? base : '$base[$ruby]';
 }
 
+/// A token surface reconciled against the vocab entry it claims to be.
+///
+/// [base] is the part attributed to the entry and [trailing] the grammar glue
+/// the model fused onto the end of the token (D74) — empty for a cleanly
+/// tokenized surface. Callers that care about word boundaries (the reading
+/// screen's tap targets) render the two separately; callers that only ask
+/// "does this reconcile?" (the scope validator) just check for null.
+@immutable
+class SurfaceMatch {
+  const SurfaceMatch({
+    required this.base,
+    required this.segments,
+    required this.trailing,
+  });
+
+  /// The leading part of the surface that belongs to the entry (先生).
+  final String base;
+
+  /// Furigana display segments for [base] alone.
+  final List<FuriganaSegment> segments;
+
+  /// Fused grammar glue and any trailing punctuation (は、), or '' when the
+  /// surface needed no peeling.
+  final String trailing;
+
+  bool get hadFusedGlue => trailing.isNotEmpty;
+}
+
 /// Base-form decomposition of a word's kanji form against its kana reading.
 @immutable
 class OkuriganaSplit {
@@ -96,6 +124,35 @@ List<FuriganaSegment>? furiganaSegments({
   required String kana,
   required String kanji,
   required bool conjugates,
+}) =>
+    matchSurface(
+      surface: surface,
+      kana: kana,
+      kanji: kanji,
+      conjugates: conjugates,
+    )?.segments;
+
+/// Longest fused tail the glue peel will consider, in characters. Bounds the
+/// backtracking factorization below and keeps the peel to plausible particle
+/// runs (は, には, ますか) rather than swallowing half a line.
+const int _maxFusedGlueChars = 6;
+
+/// Reconciles a token [surface] with the vocab entry it claims to be, the way
+/// [furiganaSegments] does, but additionally tolerating grammar glue the model
+/// fused into the content token (D74) when [trailingGlue] supplies the known
+/// glue inventory.
+///
+/// The peel is a **fallback only** — attempted after a direct match fails, so a
+/// legitimately tokenized conjugation is never split apart just because its
+/// ending also appears in the glue set (飲みます stays one token even though
+/// ます is glue). Returns null when nothing reconciles the surface with the
+/// entry, exactly as before.
+SurfaceMatch? matchSurface({
+  required String surface,
+  required String kana,
+  required String kanji,
+  required bool conjugates,
+  Set<String> trailingGlue = const {},
 }) {
   // Peel surrounding punctuation into plain segments.
   var core = surface;
@@ -113,13 +170,62 @@ List<FuriganaSegment>? furiganaSegments({
   }
   if (core.isEmpty) return null; // pure punctuation is not a content word
 
-  final match = _matchCore(core, kana, kanji, conjugates);
-  if (match == null) return null;
-  return [
-    if (lead.isNotEmpty) FuriganaSegment(lead),
-    ...match,
-    if (trail.isNotEmpty) FuriganaSegment(trail),
-  ];
+  List<FuriganaSegment> wrap(List<FuriganaSegment> match, String tail) => [
+        if (lead.isNotEmpty) FuriganaSegment(lead),
+        ...match,
+        if (tail.isNotEmpty) FuriganaSegment(tail),
+      ];
+
+  final direct = _matchCore(core, kana, kanji, conjugates);
+  if (direct != null) {
+    return SurfaceMatch(
+      base: surface,
+      segments: wrap(direct, trail),
+      trailing: '',
+    );
+  }
+  if (trailingGlue.isEmpty) return null;
+
+  // Fused-glue fallback: walk split points from the longest head down, taking
+  // the first where the head reconciles with the entry and the tail factors
+  // entirely into known glue. Longest head first keeps the peel minimal — a
+  // defensive ordering more than an observable one, since an entry's own match
+  // rule usually admits just one head (a non-conjugating entry must match its
+  // kana exactly, and a conjugating one absorbs any kana tail directly, never
+  // reaching this loop at all).
+  for (var i = core.length - 1;
+      i >= 1 && core.length - i <= _maxFusedGlueChars;
+      i--) {
+    final tail = core.substring(i);
+    if (!_factorsIntoGlue(tail, trailingGlue)) continue;
+    final head = core.substring(0, i);
+    final segments = _matchCore(head, kana, kanji, conjugates);
+    if (segments == null) continue;
+    return SurfaceMatch(
+      base: lead + head,
+      segments: [
+        if (lead.isNotEmpty) FuriganaSegment(lead),
+        ...segments,
+      ],
+      trailing: tail + trail,
+    );
+  }
+  return null;
+}
+
+/// Whether [s] is a concatenation of one or more surfaces from [glue].
+/// Backtracking, because glue surfaces overlap (は / には) — bounded by
+/// [_maxFusedGlueChars] at the only call site.
+bool _factorsIntoGlue(String s, Set<String> glue) {
+  if (s.isEmpty) return true;
+  for (final g in glue) {
+    if (g.isNotEmpty &&
+        s.startsWith(g) &&
+        _factorsIntoGlue(s.substring(g.length), glue)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 List<FuriganaSegment>? _matchCore(

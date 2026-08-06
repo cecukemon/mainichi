@@ -348,6 +348,45 @@ void main() {
       expect(report.violations, contains(contains('untaught word')));
     });
 
+    test('accepts a content token with a particle fused into it (D74)', () {
+      // The live failure: "token あなたは is not a recognizable form of vocab
+      // id 25 (あなた)" — right word, right id, particle merged in. A
+      // tokenization slip, not a scope leak.
+      final report = validateScope(
+        _convo(const [
+          GenToken(surface: 'これは', vocabId: 1),
+          GenToken(surface: 'ほん', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: 'これは ほん です'),
+        _seed,
+      );
+      expect(report.violations, isEmpty);
+    });
+
+    test('the fused-glue peel does not launder an untaught word (D74)', () {
+      // The peel accepts entry+glue, never unknown+glue: さん is not glue and
+      // ねこ is not the entry, so both must still fail.
+      final honorific = validateScope(
+        _convo(const [
+          GenToken(surface: 'これ', vocabId: 1),
+          GenToken(surface: 'は', vocabId: 0),
+          GenToken(surface: 'ほんさん', vocabId: 4),
+        ], text: 'これは ほんさん'),
+        _seed,
+      );
+      expect(honorific.violations, isNotEmpty);
+
+      final hallucinated = validateScope(
+        _convo(const [
+          GenToken(surface: 'ねこは', vocabId: 4),
+          GenToken(surface: 'です', vocabId: 0),
+        ], text: 'ねこは です'),
+        _seed,
+      );
+      expect(hallucinated.violations,
+          contains(contains('not a recognizable form')));
+    });
+
     test('flags an out-of-vocabulary token', () {
       final report = validateScope(
         _convo(const [

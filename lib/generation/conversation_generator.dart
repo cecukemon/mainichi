@@ -690,18 +690,33 @@ ScopeReport validateScope(GeneratedConversation convo, GenerationSeed seed) {
         // a hallucinated surface tagged with a *valid* in-scope vocab id
         // passed every id-based check and would have rendered the wrong
         // furigana (the sibling hole of the D24 reconstruction check).
-        final segments = furiganaSegments(
+        final match = matchSurface(
           surface: tok.surface,
           kana: word.kana,
           kanji: word.kanji,
           conjugates: conjugatingRoles.contains(word.role),
+          trailingGlue: seed.glue,
         );
-        if (segments == null) {
+        if (match == null) {
           violations.add(
               'line $n: token "${tok.surface}" is not a recognizable form of '
               'vocab id ${tok.vocabId} ("${word.kana}"'
               '${word.kanji.isEmpty ? '' : ' / "${word.kanji}"'}) — possible '
               'hallucinated surface or wrong vocab id');
+        } else if (match.hadFusedGlue) {
+          // The model fused a particle into the content token (あなたは for
+          // あなた + は) instead of emitting it as separate glue — a
+          // tokenization slip, not a scope leak (D74). Accepting costs
+          // nothing: every character of the line is independently verified by
+          // the factoring check above, the peeled tail is known glue by
+          // construction, and the reading screen splits the token back apart
+          // so furigana and the tap target still land on the word alone.
+          // Logged so fusion frequency stays observable, as with D53.
+          developer.log(
+            'line $n: token "${tok.surface}" fused glue "${match.trailing}" '
+            'onto vocab id ${tok.vocabId} — accepting, peeled for display (D74)',
+            name: 'reading.scope',
+          );
         }
       }
     }
