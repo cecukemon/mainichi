@@ -60,7 +60,10 @@ class VerbFixupSheet extends ConsumerWidget {
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                     itemCount: suspects.length,
                     separatorBuilder: (_, _) => const Divider(height: 28),
-                    itemBuilder: (context, i) => _SuspectCard(word: suspects[i]),
+                    itemBuilder: (context, i) => _SuspectCard(
+                      key: ValueKey(suspects[i].id),
+                      word: suspects[i],
+                    ),
                   ),
           ),
         ],
@@ -70,7 +73,7 @@ class VerbFixupSheet extends ConsumerWidget {
 }
 
 class _SuspectCard extends ConsumerStatefulWidget {
-  const _SuspectCard({required this.word});
+  const _SuspectCard({super.key, required this.word});
   final BunkoWordRow word;
 
   @override
