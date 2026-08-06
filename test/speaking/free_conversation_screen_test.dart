@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mainichi/data/seed_repository.dart';
 import 'package:mainichi/generation/conversation_generator.dart';
+import 'package:mainichi/listening/line_audio.dart' show LineAudioSpec;
+import 'package:mainichi/listening/playback_controller.dart' show LineAudioPlayer;
 import 'package:mainichi/reading/reading_providers.dart' show seedSourceProvider;
 import 'package:mainichi/speaking/conversation_client.dart';
 import 'package:mainichi/speaking/conversation_turn.dart';
+import 'package:mainichi/speaking/free_conv_audio.dart';
+import 'package:mainichi/speaking/free_conv_audio_store.dart';
 import 'package:mainichi/speaking/screens/free_conversation_screen.dart';
 import 'package:mainichi/speaking/speaking_providers.dart';
 import 'package:mainichi/speaking/speech_recorder.dart';
@@ -61,6 +67,54 @@ class _FakeStt implements SttService {
   Future<String> transcribe(List<int> audioContent) async => transcript;
 }
 
+/// A player whose completion the test controls, mirroring
+/// `free_conv_audio_test.dart`'s `_ScriptedPlayer`.
+class _ScriptedPlayer implements LineAudioPlayer {
+  final List<String> played = [];
+  Completer<bool>? _current;
+
+  void finishCurrent() {
+    final c = _current;
+    _current = null;
+    c?.complete(true);
+  }
+
+  @override
+  Future<bool> playFile(String path) {
+    played.add(path);
+    _current = Completer<bool>();
+    return _current!.future;
+  }
+
+  @override
+  Future<void> stop() async {
+    final c = _current;
+    _current = null;
+    c?.complete(false);
+  }
+
+  @override
+  Future<void> setSpeed(double speed) async {}
+
+  @override
+  Future<void> dispose() async {}
+}
+
+/// An in-memory store — no real filesystem access, so it's safe under the
+/// widget test framework's fake clock (see `free_conv_audio_store.dart`).
+class _FakeStore implements FreeConvAudioStore {
+  final List<LineAudioSpec> synthesized = [];
+
+  @override
+  Future<String> ensureFile(LineAudioSpec spec) async {
+    if (!synthesized.contains(spec)) synthesized.add(spec);
+    return 'fake/${spec.kana}-${spec.voice}.mp3';
+  }
+
+  @override
+  Future<void> clear() async {}
+}
+
 class _FakeConversation implements ConversationService {
   _FakeConversation(this.results);
   final List<ConversationTurn> results;
@@ -83,6 +137,8 @@ Widget _launcher(
   ConversationService service, {
   GenerationSeed seed = _seed,
   String transcript = 'はい',
+  FreeConvAudioStore? store,
+  LineAudioPlayer? player,
 }) {
   return ProviderScope(
     overrides: [
@@ -90,6 +146,13 @@ Widget _launcher(
       sttServiceProvider.overrideWithValue(_FakeStt(transcript)),
       speechRecorderFactoryProvider.overrideWithValue(() => _FakeRecorder()),
       conversationServiceProvider.overrideWithValue(service),
+      freeConvAudioControllerFactoryProvider.overrideWithValue(
+        (seed) => FreeConvAudioController(
+          store: store ?? _FakeStore(),
+          player: player ?? _ScriptedPlayer(),
+          seed: seed,
+        ),
+      ),
     ],
     child: MaterialApp(
       home: Scaffold(
@@ -118,6 +181,38 @@ void main() {
 
     expect(find.text('すずき'), findsOneWidget); // persona label
     expect(find.text('ほん'), findsWidgets); // the noun token's base
+  });
+
+  testWidgets('the app line never plays automatically', (tester) async {
+    final store = _FakeStore();
+    await tester.pumpWidget(
+        _launcher(_FakeConversation([_turn('ほんですか')]), store: store));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(store.synthesized, isEmpty);
+    expect(find.byIcon(Icons.volume_up_outlined), findsOneWidget);
+  });
+
+  testWidgets('tapping the speak button plays the line, then returns to idle',
+      (tester) async {
+    final store = _FakeStore();
+    final player = _ScriptedPlayer();
+    await tester.pumpWidget(_launcher(_FakeConversation([_turn('ほんですか')]),
+        store: store, player: player));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.volume_up_outlined));
+    await tester.pump();
+    await tester.pump();
+    expect(store.synthesized, hasLength(1));
+    expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+
+    player.finishCurrent();
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.volume_up_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.stop_circle_outlined), findsNothing);
   });
 
   testWidgets('a spoken reply shows the transcript, verdict, and rewrite',
