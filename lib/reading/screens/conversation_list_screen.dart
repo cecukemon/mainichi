@@ -58,6 +58,10 @@ class ConversationListScreen extends ConsumerWidget {
         content: Text('Deleted "${_titleOf(row)}"',
             maxLines: 1, overflow: TextOverflow.ellipsis),
         duration: const Duration(seconds: 4),
+        // A SnackBar with an action defaults `persist` to true (it waits for
+        // the action/close tap instead of the timeout) — force the timeout
+        // back on so this undo toast actually goes away on its own.
+        persist: false,
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () {
