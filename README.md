@@ -6,7 +6,9 @@
 
 Because every generated sentence is checked against your own Bunko, you never practice a word, kanji or grammar ending you haven't learned yet.
 
-<!-- screenshot: home screen -->
+<p align="center">
+  <img src="docs/screenshots/Home%20screen.png" width="220" alt="Home screen">
+</p>
 
 ---
 
@@ -39,7 +41,15 @@ From a modest pile of words and a handful of structures, the app (using Claude) 
 - **Smart deduplication** — if a word is already in your Bunko, the app shows a field-by-field match summary and attaches the new example sentence to the existing entry instead of creating a duplicate. If your class taught a word in kana first and in kanji later, the existing entry gets upgraded.
 - **Atomic commit with provenance** — each photo's import is written in a single transaction and records its source image, the model used, and the raw draft.
 
-<!-- screenshots: photo crop, triage, review card (vocab), review card (dedup), commit/done -->
+<p align="center">
+  <img src="docs/screenshots/Photo%20crop.png" width="220" alt="Cropping a worksheet photo">
+  <img src="docs/screenshots/Triage.png" width="220" alt="Triage screen with bulk-approve">
+  <img src="docs/screenshots/Review%20card%20with%20photo%20snippet.png" width="220" alt="Vocabulary review card with photo snippet">
+</p>
+<p align="center">
+  <img src="docs/screenshots/Review%20card%20duplicate.png" width="220" alt="Duplicate review card with match summary">
+  <img src="docs/screenshots/Commit.png" width="220" alt="Commit screen">
+</p>
 
 ### 📖 Reading practice
 
@@ -51,7 +61,14 @@ From a modest pile of words and a handful of structures, the app (using Claude) 
 - **Self-healing when something fails** — if a conversation is rejected because of a word your class did teach but you never captured, that word shows up as a chip. Tap it, confirm it ("Did your class teach this?"), and it goes into your Bunko. The rejected conversation is then re-checked and shown on the spot if it now passes. Particles and other grammar glue get their own review sheet.
 - **Conversation history** — every valid conversation is saved. Browse them newest first, reopen one to re-read it, or swipe to delete (with undo).
 
-<!-- screenshots: reading screen (furigana on), reading screen (furigana off), word lookup sheet, scope-failure chips, conversation list -->
+<p align="center">
+  <img src="docs/screenshots/Reading%20furigana%20on.png" width="220" alt="Reading screen with furigana">
+  <img src="docs/screenshots/Reading%20furigana%20off.png" width="220" alt="Reading screen without furigana">
+</p>
+<p align="center">
+  <img src="docs/screenshots/Word%20lookup.png" width="220" alt="Word lookup sheet">
+  <img src="docs/screenshots/Conversation%20list.png" width="220" alt="Conversation list">
+</p>
 
 ### 🎧 Listening
 
@@ -60,7 +77,10 @@ From a modest pile of words and a handful of structures, the app (using Claude) 
 - **Listening mode** blurs the text so you listen first, then tap a line to reveal it.
 - **Cached audio** — each line is synthesized once and stored. If a reading gets corrected, its audio is regenerated automatically.
 
-<!-- screenshots: audio bar + highlighted line, listening (blur) mode -->
+<p align="center">
+  <img src="docs/screenshots/Audio%20bar%20playing.png" width="220" alt="Audio bar playing with highlighted line">
+  <img src="docs/screenshots/Listening%20mode%20blurred%20text.png" width="220" alt="Listening mode with blurred text">
+</p>
 
 ### 🗣️ Speaking
 
@@ -70,7 +90,11 @@ Speaking practice comes in steps that build on each other:
 - **"Check me"** — an optional step during shadowing. Record yourself reading the line and Google Cloud speech-to-text grades it as *match*, *close* or *mismatch*. What the recognizer heard is always shown, so you can tell a mispronunciation apart from a mishearing. Grading copes with STT writing in kanji: if you read 私 as わたし and STT returns 私, that's still a match.
 - **Free conversation** — chat out loud with a persona. Every reply you give gets a verdict, a short note and a corrected version, and the persona answers with a new line that is checked against your Bunko like everything else. Persona lines show furigana and support word lookup, and a **hear it** button plays each one aloud.
 
-<!-- screenshots: shadowing hold row, Check me verdict + "Heard:" transcript, free conversation screen -->
+<p align="center">
+  <img src="docs/screenshots/Shadowing%20hold%20row.png" width="220" alt="Shadowing waiting for the learner">
+  <img src="docs/screenshots/Check%20me%20verdict.png" width="220" alt="Check me verdict with transcript">
+  <img src="docs/screenshots/Free%20conversation%20screen.png" width="220" alt="Free conversation">
+</p>
 
 ### 📚 Bunko browser
 
@@ -78,7 +102,11 @@ Speaking practice comes in steps that build on each other:
 - **Detail sheets** show the meaning source, status, notes, date added and every example sentence. Structures also list their typed slots.
 - **Verb fix-up** — a verb that was captured in polite form (たべます) instead of dictionary form (たべる) can be fixed with a guided correction.
 
-<!-- screenshots: Bunko words tab with filter chips, word detail sheet, structures tab -->
+<p align="center">
+  <img src="docs/screenshots/Bunko%20words%20tab%20filter%20chips.png" width="220" alt="Bunko words tab with filter chips">
+  <img src="docs/screenshots/Bunko%20word%20detail%20sheet.png" width="220" alt="Bunko word detail sheet">
+  <img src="docs/screenshots/Bunko%20structures.png" width="220" alt="Bunko structures tab">
+</p>
 
 ### ⚙️ Settings
 
