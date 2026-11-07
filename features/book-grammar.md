@@ -1,6 +1,6 @@
 # Feature: Grammar from the textbook
 
-**Status: proposed design (2026-11-07), not started.** No D-numbers assigned yet. Each "Key decision" below becomes a decision-log entry (next free: D75) when the phase that contains it is implemented.
+**Status: proposed design (2026-11-07), revised after review (PR #16), not started.** No D-numbers assigned yet. Each "Key decision" below becomes a decision-log entry (next free: D75) when the phase that contains it is implemented.
 
 The class has moved from handouts to a textbook. Vocabulary capture stays as it is (photograph the vocab lists). Grammar capture changes source: the book offers three kinds of page, each a better input than a worksheet:
 
@@ -8,7 +8,7 @@ The class has moved from handouts to a textbook. Vocabulary capture stays as it 
 2. **Grammar exercises**: a sample sentence plus a list of cue words to build sentences with the same structure.
 3. **Grammar explanations**: German prose explaining a grammar point.
 
-The motivating problem is user-reported: **generated conversations feel repetitive, as if not all allowed forms are being used.** The code confirms the cause (see §1). This design fixes it in three phases, ordered by how directly each phase attacks that problem.
+The motivating problem is user-reported: **generated conversations feel repetitive, as if not all allowed forms are being used.** The code confirms the cause (see §1). This design fixes it in four steps (A1, A2, B, C), ordered by how directly each attacks that problem.
 
 ---
 
@@ -16,67 +16,124 @@ The motivating problem is user-reported: **generated conversations feel repetiti
 
 D71 already removed the byte-identical-request and "Q&A only" causes. What remains is structural:
 
-- **Forms are hardcoded and narrow.** `factorLine` only accepts conjugations produced by `_conjugatedForms`, whose `_verbSuffixes` table knows the ます family only. `taughtForms` is `alwaysTaughtVerbForms` plus whatever slot forms extracted Structures declare, and `SlotForm` has no `tai` at all. Te-form is deliberately unmapped (irregulars, D38).
-- **Survivorship bias.** A conversation using 食べて or 行きたい fails `validateScope` and is silently discarded. Whatever the model tries, only ます-only conversations reach the screen. The repetition is in what survives, not only in what's generated.
-- **Nothing tells the model that new forms are fair game.** The constraint context lists dictionary-form vocabulary, structures and glue. No section says "the learner now knows the て-form."
-- **Verb class is guessed.** Without stored godan/ichidan, `_conjugatedForms` tries both connectors. That's harmless for ます (over-permissive: たべります passes), but it's unworkable for て/た/ない, where the two classes diverge completely.
+- **The prompt forbids every other form.** `generationInstructions` says, word for word: "Do NOT use the te-form, plain (dictionary-form) negative, plain past, or any other conjugation not in this list" (`lib/generation/conversation_generator.dart:338`), and line 337 hardcodes `"negative"` as the only i-adjective rule. The model isn't trying 食べて and getting filtered out: it's told not to try. This is the most direct cause, and the cheapest lever.
+- **Forms are hardcoded and narrow.** `factorLine` only accepts conjugations produced by `_conjugatedForms`, whose `_verbSuffixes` table knows the ます family only. `taughtForms` is `alwaysTaughtVerbForms` plus whatever slot forms extracted Structures declare. `SlotForm` already has `te` (`lib/data/enums.dart:64`) but no suffix mapping for it, because of irregulars (D38), and has no `tai` at all.
+- **Filtering reinforces it.** A conversation that does use 食べて or 行きたい fails `validateScope`. It isn't silently dropped: the screen goes to an error state with backfill chips, and the violations are logged under `reading.scope` (`lib/reading/reading_providers.dart:197-219`, D47/D52). But only ます-only output is ever shown, so even a prompt fix alone would just trade repetition for rejections.
+- **Verb class is guessed.** Without a stored godan/ichidan, `_conjugatedForms` tries both connectors. That's harmless for ます (over-permissive: たべります passes), but it's unworkable for て/た/ない, where the two classes diverge completely.
 
-So fixing the *permission* side (phase A) gives the largest visible change. Phases B and C add the *encouragement* side: patterns and grammar points that actively steer generation toward the new forms.
+So the fix has to change the prompt and the validator together, from the same data. Step A1 does that with a rule-based conjugator. A2 makes the data book-sourced. B and C add the *encouragement* side: patterns and grammar points that actively steer generation toward the new forms.
+
+**Measuring the fix.** The problem is subjective, so before A1 lands, add a cheap dev log: the form distribution over accepted conversations (`detectTaughtForm` per verb token) and the `reading.scope` rejection rate. Compare before and after each step.
 
 ---
 
-## 2. Phase A: verb forms as data (from the book's verb table)
+## 2. Phase A: verb forms as data
 
 ### Idea
 
-Conjugations become **stored data captured from the book**, not code that derives them. The book is the authority on surfaces (closing the irregulars problem, 行く→行って, 来る→来て), and on *which* forms are taught (a column in the table means a taught form).
+Conjugations become **data**: generated by a rule-based conjugator from a stored verb group (A1), then overridden by surfaces captured from the book's verb table (A2). The book is the authority on surfaces (closing the irregulars problem, 行く→行って, 来る→来て). A per-form switch decides which forms are taught.
 
-### Data model (schema v4)
+Phase A is split so the high-value change ships first:
 
-- **`Words.verbGroup`**: nullable textEnum `VerbGroup { godan, ichidan, irregular }`. Filled from the table. Null for non-verbs and for verbs not yet seen in the table.
-- **New `WordForms` table**: one row per (word, form).
-  - `wordId` (FK → Words, cascade), `form` (textEnum `ConjugationForm`), `kana`, `kanji` (default `''`, same convention as `Words`), `importId` (provenance).
-  - Unique `(wordId, form)`. A re-import overwrites only after review confirms the change.
-- **`ConjugationForm` enum**: the closed set of forms the app understands, in book terms: `dictionary`, `masu`, `masen`, `mashita`, `masendeshita`, `te`, `ta`, `nai`, `tai`, extended as the book introduces more (potential, volitional, …). Existing `SlotForm` wire values map onto it (`polite`→`masu`, etc.), so stored slots don't need migrating; `SlotForm` gains the new members.
-- **Derived forms stay derived**: たい conjugates exactly like an i-adjective (たくない, たかった, たくなかった), so only the たい form is stored and its paradigm is generated by the existing i-adjective logic. Same for anything else that's mechanically regular *given a stored base*.
+- **A1: forms switch, conjugator, data-driven prompt.** `verbGroup`, the rule-based conjugator (te/ta/nai/tai, with 行く/する/来る special-cased), the i-adjective inflection table, the Bunko Forms tab, and the prompt's form rule generated from `taughtForms`. Groups are inferred from the ます forms already in the Bunko where possible and set by hand otherwise. This gets most of the variety win.
+- **A2: verb-table import.** Fills in groups, stores the book's irregular surfaces, adds missing verbs.
+
+### One form vocabulary: extend `SlotForm`
+
+No second enum. `SlotForm` gains the new members (`nai`, `ta`, `tai`, extended as the book introduces more: potential, volitional, …). Its wire values stay stable (drift stores `.name`), so stored slots don't need migrating. `taughtForms`, `detectTaughtForm`, `form_label.dart` and the extraction schema's `slotForms` list (`lib/extraction/worksheet_extractor.dart:~42`) keep speaking one vocabulary.
+
+- The existing `negative` stays the **i-adjective く stem** (おもしろく + ありません glue). The verb plain negative is the new `nai`. `form_label.dart` labels them distinctly.
+- The book's column headers ("te-Form", "Negativ", …) get their own header→`SlotForm` label map in the verb-table extractor, the way `form_label.dart` maps forms to display labels.
+
+### Store one base per family, derive the rest
+
+Only the form that carries an irregularity is stored. Everything mechanically regular from it is derived:
+
+| Stored base | Derived |
+|---|---|
+| `polite` (食べます) | `politeNegative`, `past`, `pastNegative` (ません/ました/ませんでした from the ます stem) |
+| `te` (食べて) | (auxiliaries via bound glue, see below) |
+| `ta` (食べた) | none |
+| `nai` (食べない) | なかった, なくて (i-adjective inflection) |
+| `tai` (食べたい) | たくない, たかった, たくなかった (i-adjective inflection) |
+
+**The i-adjective inflection table is new work.** Today the only i-adjective handling is the single `negative` → く stem rule (`lib/japanese/segmenter.dart:130-136`). A1 adds a small table (くない, かった, くなかった, くて) used for real i-adjectives, ない and たい alike.
+
+### Data model
+
+Schema plan, one migration per step:
+
+- **v4 (A1)**
+  - **`Words.verbGroup`**: nullable textEnum `VerbGroup { godan, ichidan, irregular }`. Null for non-verbs and for verbs whose group isn't known.
+  - **`FormSettings`**: one row per `SlotForm` with `enabled` (bool). Storage for the Forms-tab switch. Missing row means the default (see Scope rule).
+  - **`GrammarGlue.after`**: nullable `SlotForm`. Bound glue, see below.
+  - **`Imports.kind`** (`worksheet | verbTable | exercise | explanation`, existing rows backfilled as `worksheet`) and **`Imports.lesson`** (nullable int), so `rawDraftJson` (`lib/data/tables.dart:166`) can be re-reviewed by the right drafter and later steps don't need these columns.
+- **v5 (A2)**: **`WordForms`**: one row per (word, base form). `wordId` (FK → Words, cascade), `form` (`SlotForm`, only the stored bases above), `kana`, `kanji` (default `''`, same convention as `Words`), `importId` (provenance). Unique `(wordId, form)`. **Presence means approved**, like `GrammarGlue` (`lib/data/tables.dart:136-139`): rows are only written on commit, and a re-import overwrites only after review confirms the change.
+- **v6 (B)**: `Drills`, `DrillItems`.
+- **v7 (C)**: `GrammarPoints` + link table, multi-image imports (`ImportPages`).
 
 ### Scope rule
 
-`taughtForms` = `alwaysTaughtVerbForms` ∪ forms that have at least one approved `WordForms` row ∪ slot forms (unchanged).
+The Forms switch is the **final gate**:
 
-- A **"Forms" tab in the Bunko browser** lists the taught forms with a per-form switch. That's the escape hatch if the book prints a column the class hasn't reached yet (see open question 2).
-- For a verb with **no stored forms but a known `verbGroup`**, the taught forms are generated by a small rule-based conjugator (godan/ichidan tables plus する/来る special-cased). For a verb with **unknown group**, only the ます family is accepted, as today. New forms never leak through a guess.
+`taughtForms` = (`alwaysTaughtVerbForms` ∪ forms with any `WordForms` row ∪ slot forms of approved Structures) ∩ forms enabled in `FormSettings`.
+
+- **New forms default to off** until switched on in the Forms tab (or by approving a Phase C grammar point that introduces them). A scope leak is worse than a missing form, by the app's own priorities (D20/D42). This also covers a book table that prints columns the class hasn't reached yet, and an old worksheet structure with a `te` slot, which would otherwise enable the te-form for every verb with a known group.
+- The ます family (`alwaysTaughtVerbForms`) defaults to on.
+- `_conjugatedForms` yields stored forms first, then derived ones, then group-based conjugator output, **all filtered by `taughtForms`**. `detectTaughtForm` applies the same filter.
+- **Kana-only words never get kanji forms.** For a word with empty `kanji`, a stored form's `kanji` is ignored, so 食べて is rejected for a kana-only たべる.
+- For a verb with **unknown group and no stored forms**, only the ます family is accepted, as today. New forms never leak through a guess.
+
+### Bound glue for auxiliaries
+
+Auxiliaries (ください, います/いません/いました for ～ています, もいいですか) are glue, not conjugation forms. But `factorLine` matches glue anywhere in a line (`segmenter.dart:191-193`), so plain `います` glue would let せんせいがいます pass with いる untaught, and free-standing ください would follow any noun.
+
+So glue gains an optional `after: SlotForm`. Bound glue only matches **directly after a word segment in that form**: `ください (after: te)`, `います (after: te)`. Unbound glue behaves as today. The segmenter tracks the form of the previous word segment, which `_conjugatedForms` already yields.
 
 ### Segmenter and rendering
 
-- `LexiconEntry` gains `forms: Map<String, ({String kana, String kanji})>`. `_conjugatedForms` yields stored forms first, then derived ones (たい paradigm, group-based fallback). The both-connectors guess only remains for group-unknown verbs.
-- **Furigana and TTS**: a stored form carries its own kana/kanji pair, so `matchSurface`/`furiganaSegments` run against *that pair* instead of the base pair. That solves the "reading-changing irregular" limitation noted in `okurigana.dart` (来る→来て reads き, not く) without any override mechanism.
+- `LexiconEntry` gains `group` and `forms: Map<SlotForm, ({String kana, String kanji})>`. `_conjugatedForms` yields `(form, surface, kana, kanji)` so every surface carries its reading pair.
+- **The conjugator returns reading-aware pairs too.** 来る → 来て/きて, する → して. That fixes the `okurigana.dart:18-21` limitation for every verb with a known group, not only those the table covered.
+- **Furigana and TTS**: `displayTokens` (`lib/reading/line_display.dart:55-61`) currently calls `matchSurface` with the base pair. It switches to the pair attached to the matched surface, which the segmenter already knows (no separate `detectTaughtForm` pass, no trying each stored pair).
 - `detectTaughtForm` returns the new form keys, and the word lookup sheet labels them ("て-form of 食べる").
 
-### Capture: the verb-table import
+### Generation (A1)
+
+- **The form rule becomes data.** Lines 337-338 of `generationInstructions` are generated from `taughtForms`: one line listing the allowed conjugations, plus "Do NOT use any conjugation not in this list." The output must be deterministic (fixed form order, not set iteration order) so the cached prefix stays stable (D7).
+- A **`TAUGHT FORMS`** section lists each taught form with a one-line description and a usage hint (て-form: requests with ください, sequences; たい: wants).
+- **Per-verb forms only where needed.** A `"forms"` entry is emitted only for verbs whose surfaces aren't predictable from TAUGHT FORMS plus the group rule: irregulars and verbs with stored forms that differ from the conjugator. Rough estimate: emitting all forms for 100 verbs × 5 bases × ~12 tokens is ~6k tokens per request, and caching only helps within the TTL, which spread-out one-tap reading sessions often miss. Irregular-only emission keeps it to a few hundred.
+- **Form focus is its own clause.** D71's `varietyFocus` is wrapped as "Favor vocabulary and patterns about: $focus." (`conversation_generator.dart:436`), which doesn't fit a directive. A separate clause in the user message (same D71 placement) picks one taught non-ます form at random: "Use at least one たい-form." The extra random pick changes RNG consumption order, so the seeded-determinism tests in `conversation_generator_test.dart` need updating.
+- **Free conversation is affected too.** `conversation_turn.dart` sends `constraintContext(seed)` byte-for-byte (`:14`, `:254`) and validates with `validateScope`. Its `conversationInstructions` needs the same data-driven form rule, and its token cost changes with TAUGHT FORMS.
+
+### Capture: the verb-table import (A2)
 
 A new extraction mode on the photo import screen: **"Verb table"** (alongside the existing worksheet mode). It gets its own schema and prompt, not an extension of `extractionSchema`. A dense table is a different task from a worksheet, and a separate schema keeps both prompts sharp.
 
-- **Schema**: `columns` (each printed header mapped to a `ConjugationForm` key, or `unknown` with the verbatim header) and `rows` (dictionary kana/kanji, group if printed, meaning if printed, and one `{kana, kanji}` per mapped column, plus confidence).
+- **Schema**: `columns` (each printed header mapped to a `SlotForm` key, or `unknown` with the verbatim header) and `rows` (dictionary kana/kanji, meaning if printed, and one `{kana, kanji}` per mapped column, plus confidence). Only the stored bases are requested, which keeps output small.
 - **Header mapping is reviewed once per import, not per row.** The triage screen shows "Column 'te-Form' → て-form" and lets the user fix a mapping or drop a column. Unknown columns are reported, never stored.
-- **Consistency check as an OCR guard.** When the group is known, the rule-based conjugator computes each form and compares it to the printed one. On a match the row is high confidence (bulk-approvable). On a mismatch, the row is flagged for review and the card shows printed vs. computed. That catches OCR misreads (small っ read as つ, missing dakuten) cheaply, and the book still wins when the user confirms.
-- **Dedup**: rows match existing `Words` by `(kana, kanji, role=verb)`, with the existing kana-first/kanji-later upgrade (D26). A match attaches forms and group to the existing word. A new verb becomes a new word through the normal vocab review card. This also means **the verb table can fill gaps in the Bunko.**
+- **The group is derived, not extracted.** The ます column fixes it for everything except する/来る: ichidan if the ます stem equals the dictionary form minus る, otherwise godan (帰る→帰り). The model doesn't guess a group.
+- **Consistency check as an OCR guard.** With the group derived for every row, the conjugator computes each base form and compares it to the printed one. On a match the row is high confidence. On a mismatch, the row is flagged and the card shows printed vs. computed. That catches OCR misreads (small っ read as つ, missing dakuten) cheaply, and the book still wins when the user confirms.
+- **Dedup follows the existing rule.** `findDedupCandidate` matches on **kana only** and only *proposes* a merge (`lib/capture/dedup.dart:10-19`, capture-loop §3). That's right here too, since it covers the D26 case (a kana-only word, with the table printing kanji). Two additions:
+  - **Bulk confirm.** Per-row confirmation would mean ~30 confirmations per page. Rows whose consistency check passed and whose dedup candidate has the same role can be confirmed in bulk from the triage screen. Flagged rows stay one by one. This is a new decision that relaxes capture-loop §3 for this mode only.
+  - **Polite-form captures.** Verbs captured as たべます (the `politeFormSuspicion` / fix-up sheet path, `lib/data/bunko_store.dart:97`) are also matched against the row's ます column. The proposal then fixes the existing word to the dictionary form instead of creating a duplicate.
+  - A new verb becomes a new word through the normal vocab review card. **The verb table can fill gaps in the Bunko.**
+- **Kanji are opt-in per import.** Under D26 every merge onto a kana-only verb writes the table's kanji and clears `kanaOnly`. Textbook tables often print kanji the class hasn't covered, so one import could flip every generated verb to kanji, against the kanji-only-if-printed intent (spec §3). The prep screen gets a "kanji in this table are taught" toggle, default off. Off means kana-only words stay kana-only and their forms' kanji aren't stored.
 - **One photo per page.** A multi-page table is several imports, which is fine because each is idempotent per row.
-- **Token budget**: a full page of verbs × ~8 forms with kanji is large output. Use the same `max_tokens` discipline as D54, and the prompt asks for no regions or notes in this mode to keep rows small.
-
-### Generation
-
-- The constraint context's verb entries gain their taught forms (`"forms": {"te": "たべて", "tai": "たべたい"}`). That costs tokens, but it's cached (D7) and removes most conjugation mistakes at the source.
-- A new **`TAUGHT FORMS`** section lists each taught form with a one-line description and a usage hint (て-form: requests with ください, sequences; たい: wants).
-- `varietyFocus` (D71) also picks one taught form at random to feature ("use at least one たい-form"), so recently learned forms actually show up rather than merely being allowed.
-- **Auxiliaries go through glue, not new forms.** ください, います/いません (for ～ています) and もいいですか are fixed surfaces. As `GrammarGlue` rows, the factoring segmenter splits 食べて|ください with no new machinery. They're added via phase C's grammar points, or the existing glue review sheet in the meantime.
+- **Token budget**: a full page of verbs × 5 bases with kanji is still large output. Use the same `max_tokens` discipline as D54, and the prompt asks for no regions or notes in this mode to keep rows small.
 
 ### Tests
 
-- Segmenter: stored forms accepted (行って, 来て with き reading, して); group-unknown verb's て-form rejected; たい paradigm derived (食べたくない).
-- Conjugator vs. a fixture of known verbs per group; the mismatch flag on a deliberately corrupted row.
-- `validateScope`: a 食べてください line passes once ください is glue; fails before.
-- Migration v3→v4 on a populated DB: existing words untouched, `verbGroup` null, no forms.
+- Prompt: the form rule and TAUGHT FORMS are derived from `taughtForms`, and the text is identical under reordering of the input set (cache stability).
+- Conjugator vs. a fixture of known verbs per group, including 行く/する/来る with reading-aware pairs. Group inference from the ます form.
+- i-adjective table: おもしろくない, 食べたくない, 食べなかった.
+- Segmenter: stored forms accepted (行って, 来て with き reading, して); group-unknown verb's て-form rejected.
+- Forms switch off ⇒ a stored form is rejected by `factorLine` **and** by `detectTaughtForm`, even with a matching `te` slot on an approved Structure.
+- Bound glue: 食べてください passes; せんせいください fails; `います (after: te)` doesn't admit a bare いる sentence when いる is untaught.
+- A kana-only word with a stored kanji form ⇒ the kanji surface is rejected.
+- `validateScope`: a 食べてください line passes once ください is bound glue; fails before. The same for free conversation.
+- Verb-table: the mismatch flag on a deliberately corrupted row; dedup against a polite-form-captured verb (たべます); kanji toggle off keeps a kana-only word kana-only.
+- Migration v3→v4 on a populated DB: existing words untouched, `verbGroup` null, `Imports.kind` backfilled to `worksheet`, `lesson` null, glue unbound. v4→v5 adds an empty `WordForms`.
+- Determinism tests in `conversation_generator_test.dart` updated for the form-focus pick.
 
 ---
 
@@ -88,12 +145,13 @@ A third import mode, **"Grammar exercise"**: sample sentence plus cue-word lines
 
 - The sample sentence becomes a **Structure**, using the existing template/slot extraction. It's better grounded than on worksheets because the cue lines show exactly which parts vary, so the slot generalization is less of a judgment call (today it's always marked low confidence).
 - Each cue line becomes a **drill item**: the cue words (in order, as printed), the expected answer (model-produced from sample + cues, unless the book prints answers; see open question 3), and the slot fillers.
-- Cue words go through normal vocab dedup/review. New words land in the Bunko like any other capture.
+- Cue words go through normal vocab dedup/review, by their dictionary form. New words land in the Bunko like any other capture.
 - Every expected answer runs through `factorLine` at import. An answer that doesn't factor exposes a gap (missing form or glue) at capture time instead of at practice time, and is flagged on its review card.
 
 ### Data model
 
 - **`Drills`** (`structureId`, `sampleSentence`, `lesson`, `importId`) and **`DrillItems`** (`drillId`, `cuesJson`, `answer`, `answerSource` = printed|generated, `ordinal`).
+- `cuesJson` stores each cue **as printed** (possibly conjugated or with particles, for display) **plus the resolved dictionary-form word id** (for dedup and SRS). A cue that didn't resolve to a word blocks the item from practice until reviewed.
 
 ### Practice
 
@@ -101,9 +159,13 @@ A new **"Build the sentence"** exercise on the home screen:
 
 1. Show the sample sentence (furigana, tap-to-lookup as usual) and one cue line.
 2. The learner answers by typing (Japanese keyboard) or speaking (the existing STT path from "Check me", D73).
-3. Grading: normalize kana/kanji the way `read_aloud_grader.dart` already does, then compare to the expected answer → match / close / mismatch. "Close" and "mismatch" escalate to a single Claude check ("is this a correct alternative?"), because word order and particle choice allow legitimate variants. An "I was right" override stays available.
+3. Grading, two paths:
+   - **Spoken**: `read_aloud_grader.dart` as is. It treats any kanji as an opaque match for aligned kana (D68, `:9-26`), which is right for STT.
+   - **Typed**: that leniency is wrong for IME input (a wrong kanji would pass). Typed answers are reduced to readings through `factorLine` against the lexicon, then compared as kana. A typed answer that doesn't factor is a mismatch.
+   - Match / close / mismatch use the existing thresholds. "Close" and "mismatch" escalate to a single Claude check ("is this a correct alternative?"), because word order and particle choice allow legitimate variants. The check must require the cue words and the target structure, not just grammatical Japanese. An "I was right" override stays available.
+   - **Escalation cost**: with the 0.95/0.7 thresholds, a single particle error in a short sentence lands in "close", so expect most wrong answers to escalate. Estimate the per-session cost before shipping, and consider a cheaper model for the check.
 
-Each item is graded against one structure, which is also the clean **per-structure SRS signal** the open phase-5 question is looking for.
+Each item is graded against one structure, which is also the clean **per-structure SRS signal** that the open phase-5 SRS grading question asks for (`project-status.md:17`, D40). `SrsItemType` is already `{word, structure}` (`enums.dart:119`), so no new type is needed.
 
 ---
 
@@ -111,54 +173,59 @@ Each item is graded against one structure, which is also the clean **per-structu
 
 ### Data model
 
-**`GrammarPoints`**: `lesson`, `title` (as printed, German), `summary` (short, in the app's meaning language), `forms` (list of `ConjugationForm` keys it introduces), `glue` (surfaces it introduces, e.g. ください), `status`, `importId`; plus a link table to the Structures that exemplify it.
+**`GrammarPoints`**: `lesson`, `title` (as printed, German), `summary` (short, in the app's meaning language), `forms` (list of `SlotForm` keys it introduces), `glue` (surfaces it introduces, with their `after` binding, e.g. ください after te), `status`, `importId`; plus a link table to the Structures that exemplify it.
 
 ### Capture
 
-- **Multi-photo import**: explanations often span pages. The photo import gains "add another page", and all pages go into one extraction call. This changes `Imports` from one source image to many (a `sourceImages` JSON list, or an `ImportPages` table).
+- **Multi-photo import**: explanations often span pages. The photo import gains "add another page", and all pages go into one extraction call. `Imports` goes from one source image to many via an `ImportPages` table (v7).
 - **The review card** shows title, summary, the forms and glue it introduces (each with an example conjugation from the Bunko), and the example sentences found, so the extracted *rule* can be checked against concrete output rather than taken on trust.
 
 ### Effects of approving a grammar point
 
-- Its glue surfaces go into `GrammarGlue` (with its `importId`, same as D56 backfill).
-- Its forms are marked taught (same switch as the Bunko Forms tab).
-- The generator gets a **`RECENT GRAMMAR`** section: the last N lessons' points, with titles and summaries. `varietyFocus` favors them.
+- Its glue surfaces go into `GrammarGlue`, bound as extracted (with its `importId`, same as D56 backfill).
+- Its forms are switched on in `FormSettings`.
+- The generator gets a **`RECENT GRAMMAR`** section: the last N lessons' points, with titles and summaries. The form-focus clause favors their forms.
 - The word lookup sheet links a conjugated token to the point that introduced its form ("て-form, Lesson 14").
 
 ---
 
 ## 5. Cross-cutting
 
-- **Lessons.** `Imports.lesson` (nullable int), set on the photo prep screen and sticky to the last value used. Words, structures, forms, drills and grammar points inherit it via their import. That's enough for "practice Lesson 14" and "recent grammar" later, without a `Lessons` table until titles are needed.
+- **Lessons.** `Imports.lesson` (nullable int, added in v4), set on the photo prep screen and sticky to the last value used. Words, structures, forms, drills and grammar points inherit it via their import. That's enough for "practice Lesson 14" and "recent grammar" later, without a `Lessons` table until titles are needed.
 - **Meaning language.** The book prints German glosses; the app stores English. See open question 1. Whatever the decision, the prompts (extraction, generation, the lookup sheet) must agree on it.
-- **Old worksheet data.** Untouched. Existing Structures stay valid; existing verbs gain forms when a verb-table import matches them.
+- **Old worksheet data.** Untouched. Existing Structures stay valid; existing verbs gain a group by inference and forms when a verb-table import matches them.
 - **Model choice.** Table and explanation extraction use `ModelConfig.extraction` like worksheets. No new model id.
 
 ---
 
 ## 6. Key decisions (to log as D75+ when implemented)
 
-1. Conjugated surfaces are stored data captured from the book; rules only cross-check printed forms and fill in for verbs with a known group but no stored forms.
-2. A form is taught when the book's table has a column for it, with a per-form switch in the Bunko as an override.
-3. たい-family and other mechanically regular derivatives are derived from one stored form, not stored separately.
-4. Auxiliaries (ください, います, …) are glue, not conjugation forms.
-5. The verb table, grammar exercises and grammar explanations each get their own extraction mode and schema rather than widening the worksheet schema.
-6. Phase order is A → B → C, by how directly each fixes the repetition problem.
+1. The prompt's form rule and the validator's `taughtForms` come from the same data; no hardcoded list of forbidden conjugations.
+2. One form vocabulary: `SlotForm` is extended rather than adding a parallel enum.
+3. A per-form switch is the final gate on taught forms, over all sources. New forms default to off.
+4. Conjugated surfaces are data: a rule-based conjugator from a stored verb group, overridden by surfaces captured from the book. Only one base per form family is stored; the rest is derived.
+5. Auxiliaries (ください, います, …) are glue, not conjugation forms, and can be bound to follow a given form.
+6. The verb group is derived from the printed ます form, not extracted.
+7. Verb-table rows that pass the consistency check can be merge-confirmed in bulk (relaxes capture-loop §3 for this mode).
+8. Kanji from a verb table are only stored when the import is marked as kanji-taught.
+9. The verb table, grammar exercises and grammar explanations each get their own extraction mode and schema rather than widening the worksheet schema.
+10. Step order is A1 → A2 → B → C, by how directly each fixes the repetition problem.
 
 ---
 
 ## 7. Open questions (for the user)
 
-1. **German or English meanings?** Options: store the book's German as printed (most faithful, `printedGloss`) and let old entries stay English; translate German→English at import; or store both. This affects every prompt and the lookup sheet.
-2. **Does every column in the verb table mean "taught already"?** If the book prints forms ahead of the lessons that teach them, the per-form switch (default on? off?) matters more.
+1. **German or English meanings?** Options: store the book's German as printed and let old entries stay English; translate German→English at import; or store both. (`printedGloss` today is a `MeaningSource` value, `enums.dart:83`, not a field, and `Words.meaning` is documented as "English meaning", `tables.dart:31`. Storing German there needs that comment changed or a separate column.) This affects every prompt and the lookup sheet.
+2. **Does the book print forms ahead of the lessons that teach them?** The design defaults new forms to off either way. If the book's columns match the class pace, a "switch on all forms in this table" action on import would save taps.
 3. **Does the book have an answer key for the exercises?** If so, photographing it gives printed answers instead of model-generated ones (`answerSource = printed`).
-4. **What exactly are the table's columns?** A photo of one verb-table page before implementation would pin down `ConjugationForm`'s initial members and the header-mapping prompt, and it's the best fixture for the extraction tests.
-5. **Does the table include i-/na-adjectives too?** If yes, the same table import covers them (role from the table section), with i-adjective forms (くない, かった) stored the same way.
+4. **What exactly are the table's columns?** A photo of one verb-table page before A2 would pin down the header map, `SlotForm`'s new members and the extraction prompt, and it's the best fixture for the extraction tests.
+5. **Does the table include i-/na-adjectives too?** If yes, the same table import covers them (role from the table section), with i-adjective forms derived from the new inflection table.
 
 ---
 
 ## 8. Rough sizing
 
-- **Phase A**: schema v4 + migration, conjugator, segmenter/okurigana changes, verb-table extraction mode + review cards, Bunko Forms tab, prompt changes. The largest phase, and the one that should visibly change generation variety.
-- **Phase B**: one extraction mode, two tables, one new practice screen reusing STT and the grader.
-- **Phase C**: multi-photo import, one extraction mode, one table, prompt section, lookup link.
+- **A1**: v4 migration, conjugator + i-adjective table, bound glue in the segmenter, reading-aware pairs in rendering, Forms tab, data-driven prompt rule + TAUGHT FORMS + form focus (generation and free conversation), the measurement log. Medium, and the step that should visibly change generation variety.
+- **A2**: v5 migration, verb-table extraction mode, header mapping + bulk-confirm triage, dedup additions, kanji toggle. Medium.
+- **B**: v6 migration, one extraction mode, one new practice screen reusing STT, a typed-answer grader.
+- **C**: v7 migration, multi-photo import, one extraction mode, prompt section, lookup link.
