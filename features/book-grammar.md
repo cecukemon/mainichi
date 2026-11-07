@@ -40,7 +40,7 @@ Read from sample photos (verb table pp. 170–171, vocab list L2 p. 16, grammar 
 - **練習A** is a substitution table: `わたしは [スーパー / かいしゃ / とうきょう] へ 行きます。` plus a question row `あなたは [どこ] ……か。`. Optional particles are bracketed (`にちようび[に]`).
 - **練習B** is a list of exercises, each with a worked 例 and numbered items. Two item shapes appear on one page:
   - **Cue → answer**: `例1: 京都(3月3日) → いつ 京都へ 行きますか。……3月3日に 行きます。`, items `1) さくら大学 (9月14日) →`. The answer is a Q/A pair, and the examples show variants (来週 takes no に).
-  - **Question → answer from a picture**: `1) だれと 日本へ 来ましたか。 →`, answered from an illustration (a travel map, a week calendar).
+  - **Question → answer from a picture**: `1) だれと 日本へ 来ましたか。 →`, answered from an illustration (a travel map, a week calendar). These are skipped (see §3).
 
 ---
 
@@ -192,27 +192,25 @@ A substitution table already is a Structure: the fixed text is the template, the
 
 ### 練習B: drills
 
-Each exercise becomes a **drill**: its 例 (one or two worked examples) plus items. An item is one of two kinds:
+Each exercise becomes a **drill**: its 例 (one or two worked examples) plus items. Only **cue items** are imported: cue words in parentheses (`さくら大学 (9月14日)`), from which the model builds the answer using the 例.
 
-- **Cue item**: cue words in parentheses (`さくら大学 (9月14日)`). The model builds the answer from the 例 and the cues.
-- **Picture item**: a question whose answer comes from an illustration. The extractor stores the illustration's region (the existing `region` crop) and proposes an answer from the picture, at low confidence.
+**Picture items are skipped** (decided 2026-11-07). These are questions whose answer is only in an illustration (`だれと 日本へ 来ましたか。` answered from a travel map, or exercise 7's week calendar). They would need an image crop at practice time and a model-read answer that's hard to confirm, while cue items cover the same grammar. The extractor recognizes them (an item with a question but no cue) and reports how many were skipped, so the triage screen can say "3 picture items skipped". Support can be added later if drills feel thin.
 
 There's **no answer key**, so every answer is model-generated and confirmed on the review card. To keep that review cheap:
 
 - Each answer runs through `factorLine` at import. One that doesn't factor exposes a gap (a missing form or glue) at capture time instead of practice time, and is flagged.
-- Picture items always show the crop next to the proposed answer.
 - An answer can have several lines (the Q/A pair in 例1), and the 例's own variants (来週 without に) are kept as accepted alternatives where they apply.
 
 ### Data model
 
-- **`Drills`** (`structureId`, `exampleJson` (the 例 lines as printed), `lesson`, `importId`) and **`DrillItems`** (`drillId`, `kind` = cue | picture, `cuesJson`, `question` (picture items), `region`, `answerLines`, `answerSource` = generated | picture | manual, `ordinal`).
+- **`Drills`** (`structureId`, `exampleJson` (the 例 lines as printed), `lesson`, `importId`) and **`DrillItems`** (`drillId`, `cuesJson`, `answerLines`, `answerSource` = generated | manual, `ordinal`).
 - `cuesJson` stores each cue **as printed** (for display) **plus the resolved dictionary-form word id** (for dedup and SRS). A cue that doesn't resolve to a word keeps the item out of practice until it's reviewed. Dates and numbers (9月14日) resolve as glue/number tokens, not words.
 
 ### Practice
 
 A new **"Build the sentence"** exercise on the home screen:
 
-1. Show the 例 (furigana, tap-to-lookup as usual) and one item: its cues, or its question plus the picture crop.
+1. Show the 例 (furigana, tap-to-lookup as usual) and one item's cues.
 2. The learner answers by typing (Japanese keyboard) or speaking (the existing STT path from "Check me", D73).
 3. Grading, two paths:
    - **Spoken**: `read_aloud_grader.dart` as is. It treats any kanji as an opaque match for aligned kana (D68, `:9-26`), which is right for STT.
@@ -270,18 +268,18 @@ Each item is graded against one structure, which is also the clean **per-structu
 9. Meanings are stored in English. German glosses are translated at import (`translatedGloss`), with the original kept in the raw draft.
 10. The vocab list, verb table, exercises and grammar explanations each get their own extraction mode and prompt rather than widening the worksheet schema.
 11. Exercise answers are model-generated (no answer key), verified by `factorLine` at import and confirmed on review; grading escalates to a Claude check for alternatives.
-12. Step order is A1 → A2 → B → C, by how directly each fixes the repetition problem.
+12. Only 練習B cue items are imported; items answered from an illustration are skipped and counted.
+13. Step order is A1 → A2 → B → C, by how directly each fixes the repetition problem.
 
 ---
 
 ## 7. Open questions (for the user)
 
-Answered on 2026-11-07: meanings are stored in English; the table prints forms the class hasn't been taught yet; there's no answer key; the verb table has no adjectives (so i-adjective forms come from the inflection table only, and nothing imports adjectives from it).
+Answered on 2026-11-07: meanings are stored in English; the table prints forms the class hasn't been taught yet; there's no answer key; the verb table has no adjectives (so i-adjective forms come from the inflection table only, and nothing imports adjectives from it); 練習B picture items are skipped.
 
 Still open:
 
-1. **Picture items in 練習B**: include them (practice shows the illustration crop, answers proposed at low confidence and confirmed by you), or skip them and import cue items only? The design assumes include.
-2. **Gruppe II and III pages**: the design assumes they share the Gruppe I layout. One photo of a Gruppe III page (with する/来る and the noun + します verbs) before A2 would confirm it, and would be the irregulars fixture.
+1. **Gruppe II and III pages**: the design assumes they share the Gruppe I layout. One photo of a Gruppe III page (with する/来る and the noun + します verbs) before A2 would confirm it, and would be the irregulars fixture.
 
 ---
 
