@@ -58,7 +58,7 @@ class ConversationListNotifier extends StateNotifier<ConversationListState> {
   /// its position for a potential [putBack]. Nothing is persisted yet.
   /// Returns null if the id is already gone.
   ({ConversationSummary row, int index})? takeOut(int id) {
-    final index = state.rows.indexWhere((r) => r.id == id);
+    final index = state.rows.indexWhere((summary) => summary.id == id);
     if (index < 0) return null;
     final row = state.rows[index];
     state = ConversationListState(
