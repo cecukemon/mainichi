@@ -126,7 +126,7 @@ String practicedPhrase(DateTime? lastPracticedAt, DateTime now) {
   if (days < 7) return 'practiced $days days ago';
   if (days < 14) return 'practiced 1 week ago';
   if (days < 35) return 'practiced ${days ~/ 7} weeks ago';
-  final months = days ~/ 30;
+  final months = days ~/ 31;
   return months <= 1
       ? 'practiced 1 month ago'
       : 'practiced $months months ago';
